@@ -1,0 +1,9 @@
+streamlit==1.28.0
+pandas
+beautifulsoup4
+requests
+sqlalchemy             # Mapowanie obiektowo-relacyjne
+psycopg2-binary        # Sterownik do PostgreSQL
+scikit-learn           # Do modelu ML
+plotly                 # Do interaktywnych wykresów
+passlib                # Do bezpiecznego hashowania haseł 
