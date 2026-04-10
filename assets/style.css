@@ -1,0 +1,46 @@
+/* Stylizacja głównego kontenera */
+.main {
+    background-color: #f8f9fa;
+}
+
+/* Stylizacja kart z metrykami */
+div[data-testid="stMetric"] {
+    background-color: #adadad;
+    border: 1px solid #e0e0e0;
+    padding: 15px;
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+/* Stylizacja przycisków */
+.stButton>button {
+    width: 100%;
+    border-radius: 5px;
+    height: 3em;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    transition: 0.3s;
+}
+
+.stButton>button:hover {
+    background-color: #0056b3;
+    border: none;
+    color: white;
+}
+
+/* Nagłówki */
+h1 {
+    color: #1e1e1e;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-weight: 700;
+}
+
+/* Customowa klasa dla ramek (jeśli będziesz chciała użyć st.markdown) */
+.custom-card {
+    padding: 20px;
+    border-radius: 10px;
+    background-color: white;
+    margin-bottom: 10px;
+    border-left: 5px solid #007bff;
+}

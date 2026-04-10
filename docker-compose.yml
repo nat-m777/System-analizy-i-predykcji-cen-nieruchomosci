@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    container_name: real_estate_db
+    environment:
+      POSTGRES_USER: admin        # Zmień na swój login z bazy
+      POSTGRES_PASSWORD: password # Zmień na swoje hasło z bazy
+      POSTGRES_DB: real_estate
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  app:
+    build: .
+    container_name: real_estate_app
+    ports:
+      - "8501:8501"
+    depends_on:
+      - db
+    volumes:
+      - .:/app # Dzięki temu zmiany w kodzie będą odświeżać się "w locie" bez resetu Dockera
+
+volumes:
+  postgres_data:

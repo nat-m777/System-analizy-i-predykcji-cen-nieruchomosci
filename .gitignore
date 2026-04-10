@@ -1,0 +1,22 @@
+# Wirtualne środowisko
+venv/
+
+# Skompilowane pliki Pythona
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Pliki konfiguracyjne edytora VS Code
+.vscode/
+
+# Zmienne środowiskowe i hasła
+.env
+
+# Pliki systemowe macOS 
+.DS_Store
+
+# Opcjonalnie: pliki tymczasowe Streamlit i narzędzi testowych
+.streamlit/
+.pytest_cache/
