@@ -22,9 +22,6 @@ class OtodomScraper:
         self.driver = None
         self.all_results = []
 
-    # =====================
-    # DRIVER
-    # =====================
     def start_driver(self):
         """Uruchamia przeglądarkę Chrome w trybie sterowanym przez Selenium."""
         self.driver = webdriver.Chrome(
@@ -36,9 +33,6 @@ class OtodomScraper:
         if self.driver:
             self.driver.quit()
 
-    # =====================
-    # SCRAPING
-    # =====================
     def scrape_page(self, url, page):
         """
         Pobiera surowe dane ofert z konkretnej strony wyników.
@@ -126,9 +120,6 @@ class OtodomScraper:
 
             time.sleep(1.5)
 
-    # =====================
-    # GŁÓWNA FUNKCJA
-    # =====================
     def fetch_data(self, city, max_pages=2, selected_districts=None):
         """
         Główna metoda pobierająca dane dla wybranego miasta i dzielnic.
