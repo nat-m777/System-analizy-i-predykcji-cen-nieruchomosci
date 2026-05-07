@@ -24,9 +24,15 @@ def main():
 
     st.title("📊 Przegląd Rynku i Analiza Anomalii")
 
+    if 'username' not in st.session_state:
+        st.error("Błąd sesji: Nie znaleziono nazwy użytkownika.")
+        st.stop()
+    
+    username = st.session_state['username']
+
     # 1. POBIERANIE I CZYSZCZENIE DANYCH
     db = get_db()
-    df_raw = db.get_all_offers()
+    df_raw = db.get_all_offers(username)
     df = clean_df(df_raw)
 
     if df.empty:

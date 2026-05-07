@@ -1,25 +1,17 @@
 import os
 from sqlalchemy import create_engine, text
 import pandas as pd
+import streamlit as st
 
 class DBManager:
-    """
-    Klasa odpowiedzialna za zarządzanie bazą danych PostgreSQL.
-    
-    Obsługuje inicjalizację schematu bazy danych, masowe wstawianie ofert 
-    nieruchomości oraz pobieranie danych do analizy w Streamlit.
-    """
-
     def __init__(self):
-        # Pobiera URL z systemu (Docker) lub używa lokalnego jeśli uruchamiasz ręcznie
         self.url = os.getenv("DATABASE_URL", "postgresql+psycopg2://admin:password@127.0.0.1:5432/real_estate")
         self.engine = create_engine(self.url)
-    
+        # Automatycznie dbamy o strukturę przy starcie
+        self.create_tables()
+        self.fix_schema()
+
     def create_tables(self):
-        """
-        Tworzy tabelę 'offers' w bazie danych, jeśli jeszcze nie istnieje.
-        Definiuje kolumny takie jak cena, metraż, dzielnica i data pobrania.
-        """
         query = """
         CREATE TABLE IF NOT EXISTS offers (
             id SERIAL PRIMARY KEY,
@@ -39,116 +31,70 @@ class DBManager:
         """
         with self.engine.begin() as conn:
             conn.execute(text(query))
-    
-    def insert_offers(self, df):
 
+    def fix_schema(self):
+        """Dodaje brakujące kolumny, jeśli baza została utworzona wcześniej."""
+        with self.engine.begin() as conn:
+            # Dodajemy username jeśli go nie ma (jako alias dla owner lub dodatkowe info)
+            conn.execute(text("ALTER TABLE offers ADD COLUMN IF NOT EXISTS username TEXT;"))
+            conn.execute(text("ALTER TABLE offers ADD COLUMN IF NOT EXISTS owner TEXT;"))
+
+    def insert_offers(self, df, username):
         if df is None or df.empty:
             print("EMPTY DF - SKIP INSERT")
             return
 
-        print(f"INSERTING: {len(df)} offers")
+        # Czyścimy dane i przypisujemy użytkownika
+        df = df.copy() # Pracujemy na kopii, by nie psuć oryginału w Streamlit
+        df['owner'] = username
+        df['username'] = username # Na wszelki wypadek wypełniamy obie kolumny
 
         # =====================================
         # CLEAN TYPES
         # =====================================
-
-        numeric_cols = [
-            "price",
-            "area",
-            "rooms",
-            "price_per_m2"
-        ]
-
+        numeric_cols = ["price", "area", "rooms", "price_per_m2"]
         for col in numeric_cols:
-
             if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
 
-                df[col] = pd.to_numeric(
-                    df[col],
-                    errors="coerce"
-                )
-
-        # datetime
         if "scrape_date" in df.columns:
+            df["scrape_date"] = pd.to_datetime(df["scrape_date"], errors="coerce")
 
-            df["scrape_date"] = pd.to_datetime(
-                df["scrape_date"],
-                errors="coerce"
-            )
-
-        # text columns
-        text_cols = [
-            "title",
-            "city",
-            "district",
-            "subdistrict",
-            "url",
-            "source"
+        # Filtrujemy tylko te kolumny, które faktycznie chcemy w bazie
+        # (Zapobiega to błędom, gdy w DF są jakieś tymczasowe kolumny ze scrapera)
+        valid_columns = [
+            "title", "city", "district", "subdistrict", "price", "area", 
+            "rooms", "price_per_m2", "url", "source", "scrape_date", "owner", "username"
         ]
-
-        for col in text_cols:
-
-            if col in df.columns:
-
-                df[col] = df[col].astype(str)
-
-        # NaN -> None
-        df = df.where(pd.notnull(df), None)
-
-        # =====================================
-        # INSERT
-        # =====================================
+        
+        # Zostawiamy tylko te kolumny, które istnieją w DF i są na liście valid_columns
+        cols_to_save = [c for c in valid_columns if c in df.columns]
+        df_to_save = df[cols_to_save].where(pd.notnull(df), None)
 
         try:
-            df['owner'] = st.session_state['username']
-            df.to_sql(
+            df_to_save.to_sql(
                 "offers",
                 self.engine,
                 if_exists="append",
                 index=False,
                 method="multi"
             )
-
-            print("✅ INSERT SUCCESS")
-
+            print(f"✅ INSERT SUCCESS: {len(df_to_save)} offers for {username}")
         except Exception as e:
-
-            print("❌ INSERT ERROR")
-            print(e)
-
-            print("\n=== DF INFO ===")
-            print(df.dtypes)
-
-            print("\n=== SAMPLE ===")
-            print(df.head())
-
+            print(f"❌ INSERT ERROR: {e}")
             raise e
 
-    def get_all_offers(self):
-        """
-        Pobiera wszystkie rekordy z tabeli 'offers', sortując je od najnowszych.
-
-        Returns:
-            pd.DataFrame: Zbiór wszystkich ofert lub pusty DataFrame w przypadku błędu.
-        """
+    def get_all_offers(self, username=None):
+        """Pobiera oferty. Jeśli podano username, filtruje tylko dla tego użytkownika."""
+        if username:
+            query = text("SELECT * FROM offers WHERE owner = :u OR username = :u ORDER BY scrape_date DESC")
+            return pd.read_sql(query, self.engine, params={"u": username})
+        
         query = "SELECT * FROM offers ORDER BY scrape_date DESC"
-        try:
-            return pd.read_sql(query, self.engine)
-        except Exception as e:
-            print(f"Błąd podczas pobierania danych: {e}")
-            return pd.DataFrame()
-    
+        return pd.read_sql(query, self.engine)
+
     def clear_all_data(self):
-        """
-        Całkowicie czyści tabelę z ofertami w bazie PostgreSQL.
-        Używa instrukcji TRUNCATE, która jest szybsza i resetuje liczniki ID.
-        """
         query = text("TRUNCATE TABLE offers RESTART IDENTITY")
-        try:
-            with self.engine.begin() as conn:
-                conn.execute(query)
-            print("Baza danych PostgreSQL została wyczyszczona (TRUNCATE).")
-            return True
-        except Exception as e:
-            print(f"Błąd podczas czyszczenia bazy: {e}")
-            return False
+        with self.engine.begin() as conn:
+            conn.execute(query)
+        return True

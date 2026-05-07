@@ -4,27 +4,38 @@ from src.utils import get_db, clean_df
 from src.analysis.charts import show_price_prediction_logic
 from src.auth import check_auth
 
-check_auth()
-
-# --- KONFIGURACJA ---
+# 1. KONFIGURACJA (Zawsze na samym początku)
 st.set_page_config(page_title="Analiza i Wycena", layout="wide")
+
+# 2. ZABEZPIECZENIE
+check_auth()
 
 def main():
     st.title("📈 Analiza Statystyczna i Wycena")
     
     # 1. POBIERANIE DANYCH
     db = get_db()
-    df_raw = db.get_all_offers()
+    
+    # Sprawdzamy czy mamy username w sesji przed pobraniem
+    if 'username' not in st.session_state:
+        st.error("Błąd sesji: Nie znaleziono nazwy użytkownika.")
+        st.stop()
+
+    # PRAWIDŁOWE POBIERANIE (Tylko raz, z argumentem)
+    username = st.session_state['username']
+    df_raw = db.get_all_offers(username) 
+    
+    # Czyszczenie danych
     df = clean_df(df_raw)
 
     if df is None or df.empty:
-        st.warning("⚠️ Brak danych do analizy. Uruchom scraper, aby zasilić bazę.")
+        st.warning(f"⚠️ Użytkownik {username} nie posiada danych do analizy. Uruchom scraper!")
         return
 
     # --- SEKCJA: KALKULATOR WYCENY ---
     st.divider()
     st.subheader("💡 Kalkulator szacunkowej ceny mieszkania")
-    st.info("Kalkulator oblicza cenę na podstawie średnich rynkowych z pobranych ofert dla danej dzielnicy.")
+    st.info("Kalkulator oblicza cenę na podstawie średnich rynkowych z pobranych ofert.")
 
     with st.container():
         col1, col2 = st.columns(2)
@@ -50,7 +61,6 @@ def main():
             show_price_prediction_logic(df, in_area, in_city, in_dist)
 
     # --- SEKCJA: DODATKOWE STATYSTYKI ---
-    # 🔥 TA CZĘŚĆ MUSI BYĆ WCIĘTA (należeć do funkcji main)
     st.divider()
     with st.expander("📊 Zobacz statystyki dla wybranej lokalizacji"):
         stats_df = df[df["city"] == in_city]
@@ -58,6 +68,7 @@ def main():
             stats_df = stats_df[stats_df["district"] == in_dist]
         
         if not stats_df.empty:
+            # Upewnij się, że kolumna price_per_m2 istnieje po clean_df
             avg_price = stats_df["price_per_m2"].mean()
             median_price = stats_df["price_per_m2"].median()
             min_price = stats_df["price_per_m2"].min()
@@ -74,10 +85,9 @@ def main():
             with col_m4:
                 st.metric("Max m²", f"{round(max_price, 2)} zł")
                 
-            st.caption(f"Statystyki oparte na {len(stats_df)} ofertach dla: {in_dist if in_dist else in_city}")
+            st.caption(f"Statystyki oparte na {len(stats_df)} ofertach.")
         else:
-            st.write("Zbyt mało danych dla tej konkretnej lokalizacji.")
+            st.write("Zbyt mało danych dla tej lokalizacji.")
 
-# Wywołanie głównej funkcji (na samym końcu, bez wcięcia)
 if __name__ == "__main__":
     main()

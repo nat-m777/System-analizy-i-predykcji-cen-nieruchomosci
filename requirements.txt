@@ -13,3 +13,5 @@ selenium-stealth
 undetected-chromedriver
 curl_cffi
 extra-streamlit-components
+scikit-learn
+joblib

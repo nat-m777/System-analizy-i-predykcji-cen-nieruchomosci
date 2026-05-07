@@ -110,7 +110,7 @@ if manual_trigger or st.session_state["trigger_scrape"]:
                 # PRZYPISANIE WŁAŚCICIELA
                 final_df['owner'] = st.session_state['username']
                 
-                db.insert_offers(final_df)
+                db.insert_offers(final_df, st.session_state['username'])
                 st.success(f"✅ Zapisano {len(final_df)} ofert dla użytkownika {st.session_state['username']}.")
                 st.balloons()
                 
