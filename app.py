@@ -1,31 +1,31 @@
 import streamlit as st
-import extra_streamlit_components as stx
-from src.auth import login_user, register_user, init_auth_db
+from src.auth import login_user, register_user, init_auth_db, get_cookie_manager
 import time
 
-# Konfiguracja strony musi być na samym początku
+# 1. Konfiguracja musi być na samym początku
 st.set_page_config(page_title="System Analizy", initial_sidebar_state="collapsed")
 
 def main():
+    # Inicjalizacja bazy użytkowników
     init_auth_db()
 
-    # Inicjalizacja menedżera ciasteczek
-    cookie_manager = stx.CookieManager()
+    # Pobieramy menedżera ciasteczek (używamy wspólnej funkcji z src/auth.py)
+    cookie_manager = get_cookie_manager()
 
-    # WAŻNE: Krótka pauza, aby ciasteczka zdążyły się załadować z przeglądarki
-    # Streamlit musi wyrenderować komponent, zanim odczyta dane
-    if 'cookies_ready' not in st.session_state:
-        time.sleep(0.5) 
-        st.session_state['cookies_ready'] = True
+    # 2. Mechanizm oczekiwania na załadowanie ciasteczek z przeglądarki
+    if 'cookies_initialized' not in st.session_state:
+        # Dajemy komponentowi czas na komunikację z przeglądarką
+        time.sleep(0.6) 
+        st.session_state['cookies_initialized'] = True
         st.rerun()
 
-    # 1. Próba odczytu ciasteczka
+    # 3. Próba automatycznego logowania z ciasteczka
     saved_user = cookie_manager.get('real_estate_user')
-
-    # 2. Logika sesji
+    
     if saved_user and not st.session_state.get('logged_in'):
         st.session_state['logged_in'] = True
         st.session_state['username'] = saved_user
+        # Po automatycznym zalogowaniu odświeżamy, by pokazać menu
         st.rerun()
 
     # --- EKRAN LOGOWANIA ---
@@ -41,8 +41,10 @@ def main():
                 if login_user(u, p):
                     st.session_state['logged_in'] = True
                     st.session_state['username'] = u
-                    # Zapisujemy ciasteczko na rok (w sekundach)
-                    cookie_manager.set('real_estate_user', u, max_age=31536000)
+                    
+                    # ZAPIS CIASTECZKA: Kluczowe dla przetrwania F5
+                    cookie_manager.set('real_estate_user', u, max_age=31536000) # 1 rok
+                    
                     st.success("Zalogowano pomyślnie!")
                     time.sleep(0.5)
                     st.rerun()
@@ -58,17 +60,22 @@ def main():
                 else:
                     st.error("Użytkownik już istnieje lub błąd bazy.")
         
-        st.stop() # Blokada dla niezalogowanych
+        # Blokada – niezalogowany nie widzi nic poniżej
+        st.stop() 
 
     # --- WIDOK DLA ZALOGOWANYCH ---
+    # Przywracamy pasek boczny dla zalogowanych (opcjonalnie przez CSS lub po prostu st.sidebar)
     st.sidebar.success(f"Zalogowano jako: {st.session_state['username']}")
     st.title(f"Witaj {st.session_state['username']}! 👋")
-    st.info("Wybierz moduł z menu po lewej stronie, aby rozpocząć analizę.")
+    st.info("Wybierz moduł z menu po lewej stronie, aby rozpocząć pracę.")
     
+    # Przycisk wylogowania musi czyścić i sesję, i ciasteczko
     if st.sidebar.button("Wyloguj"):
         cookie_manager.delete('real_estate_user')
         st.session_state['logged_in'] = False
         st.session_state.pop('username', None)
+        # Czyścimy też flagę inicjalizacji, by przy ponownym logowaniu znów poczekał na ciastka
+        st.session_state.pop('cookies_initialized', None)
         st.rerun()
 
 if __name__ == "__main__":
