@@ -4,24 +4,28 @@ services:
   db:
     image: postgres:15
     container_name: real_estate_db
+    restart: always
     environment:
-      POSTGRES_USER: admin        # Zmień na swój login z bazy
-      POSTGRES_PASSWORD: password # Zmień na swoje hasło z bazy
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
       POSTGRES_DB: real_estate
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  app:
+  web:
     build: .
     container_name: real_estate_app
-    ports:
-      - "8501:8501"
+    restart: always
     depends_on:
       - db
+    ports:
+      - "8501:8501"
+    environment:
+      # Zmieniamy 127.0.0.1 na 'db', bo w Dockerze kontenery widzą się po nazwach usług
+      DATABASE_URL: postgresql+psycopg2://admin:password@db:5432/real_estate
     volumes:
-      - .:/app # Dzięki temu zmiany w kodzie będą odświeżać się "w locie" bez resetu Dockera
-
+      - .:/app
 volumes:
   postgres_data:

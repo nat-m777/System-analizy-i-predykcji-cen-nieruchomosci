@@ -12,3 +12,4 @@ webdriver-manager
 selenium-stealth
 undetected-chromedriver
 curl_cffi
+extra-streamlit-components

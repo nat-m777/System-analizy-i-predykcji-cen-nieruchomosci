@@ -1,20 +1,27 @@
-# Używamy lekkiego obrazu z Pythonem
-FROM python:3.10-slim
+FROM python:3.11-slim
 
-# Ustawiamy katalog roboczy wewnątrz kontenera
+# Instalacja zależności systemowych i Chromium
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libpq-dev \
+    wget \
+    gnupg \
+    unzip \
+    chromium \
+    chromium-driver \
+    && rm -rf /var/lib/apt/lists/*
+
+# Ustawienie zmiennych środowiskowych, aby Selenium wiedziało gdzie jest Chromium
+ENV CHROME_BIN=/usr/bin/chromium
+ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver
+
 WORKDIR /app
 
-# Kopiujemy plik z listą bibliotek
 COPY requirements.txt .
-
-# Instalujemy biblioteki (w tym streamlit, pandas, itp.)
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Kopiujemy całą resztę Twojego kodu do kontenera
 COPY . .
 
-# Otwieramy port, na którym działa Streamlit
 EXPOSE 8501
 
-# Komenda startowa
-CMD ["streamlit", "run", "app.py", "--server.address=0.0.0.0"]
+CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
