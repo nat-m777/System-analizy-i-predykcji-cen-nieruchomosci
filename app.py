@@ -2,33 +2,40 @@ import streamlit as st
 from src.auth import login_user, register_user, init_auth_db, get_cookie_manager
 import time
 
-# 1. Konfiguracja musi być na samym początku
+# 1. Konfiguracja musi być na samym początku (przed jakimkolwiek kodem st.)
 st.set_page_config(page_title="System Analizy", initial_sidebar_state="collapsed")
 
-def main():
-    # Inicjalizacja bazy użytkowników
-    init_auth_db()
+# Inicjalizacja sesji języka
+if 'lang' not in st.session_state:
+    st.session_state.lang = "PL"
 
-    # Pobieramy menedżera ciasteczek (używamy wspólnej funkcji z src/auth.py)
+# Selektor języka
+st.sidebar.radio("Language / Język", options=["PL", "EN"], key="lang_selector", 
+                 on_change=lambda: st.session_state.update({"lang": st.session_state.lang_selector}))
+
+def main():
+    init_auth_db()
     cookie_manager = get_cookie_manager()
 
-    # 2. Mechanizm oczekiwania na załadowanie ciasteczek z przeglądarki
-    if 'cookies_initialized' not in st.session_state:
-        # Dajemy komponentowi czas na komunikację z przeglądarką
-        time.sleep(0.6) 
-        st.session_state['cookies_initialized'] = True
-        st.rerun()
+    # --- KLUCZ DO PRZETRWANIA F5 ---
+    # 2. Mechanizm oczekiwania i auto-logowania
+    if not st.session_state.get('logged_in'):
+        # Dajemy czas komponentowi na załadowanie ciasteczek z przeglądarki
+        if 'cookies_initialized' not in st.session_state:
+            time.sleep(0.8) # Nieco dłuższy czas dla pewności przy F5
+            st.session_state['cookies_initialized'] = True
+            st.rerun()
 
-    # 3. Próba automatycznego logowania z ciasteczka
-    saved_user = cookie_manager.get('real_estate_user')
-    
-    if saved_user and not st.session_state.get('logged_in'):
-        st.session_state['logged_in'] = True
-        st.session_state['username'] = saved_user
-        # Po automatycznym zalogowaniu odświeżamy, by pokazać menu
-        st.rerun()
+        # Pobieramy ciasteczko
+        saved_user = cookie_manager.get('real_estate_user')
+        
+        # Jeśli ciasteczko istnieje, przywracamy sesję
+        if saved_user:
+            st.session_state['logged_in'] = True
+            st.session_state['username'] = saved_user
+            st.rerun()
 
-    # --- EKRAN LOGOWANIA ---
+    # --- EKRAN LOGOWANIA (Tylko jeśli auto-login się nie udał) ---
     if not st.session_state.get('logged_in'):
         st.title("🔐 System Analizy Nieruchomości")
         
@@ -42,7 +49,7 @@ def main():
                     st.session_state['logged_in'] = True
                     st.session_state['username'] = u
                     
-                    # ZAPIS CIASTECZKA: Kluczowe dla przetrwania F5
+                    # ZAPIS CIASTECZKA: Musi mieć ustawione max_age, by przetrwało zamknięcie przeglądarki/F5
                     cookie_manager.set('real_estate_user', u, max_age=31536000) # 1 rok
                     
                     st.success("Zalogowano pomyślnie!")
@@ -60,21 +67,17 @@ def main():
                 else:
                     st.error("Użytkownik już istnieje lub błąd bazy.")
         
-        # Blokada – niezalogowany nie widzi nic poniżej
         st.stop() 
 
     # --- WIDOK DLA ZALOGOWANYCH ---
-    # Przywracamy pasek boczny dla zalogowanych (opcjonalnie przez CSS lub po prostu st.sidebar)
     st.sidebar.success(f"Zalogowano jako: {st.session_state['username']}")
     st.title(f"Witaj {st.session_state['username']}! 👋")
     st.info("Wybierz moduł z menu po lewej stronie, aby rozpocząć pracę.")
     
-    # Przycisk wylogowania musi czyścić i sesję, i ciasteczko
     if st.sidebar.button("Wyloguj"):
         cookie_manager.delete('real_estate_user')
         st.session_state['logged_in'] = False
         st.session_state.pop('username', None)
-        # Czyścimy też flagę inicjalizacji, by przy ponownym logowaniu znów poczekał na ciastka
         st.session_state.pop('cookies_initialized', None)
         st.rerun()
 

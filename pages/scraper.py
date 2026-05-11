@@ -4,6 +4,8 @@ import time
 from src.utils import get_db, clean_df
 from src.scraper.otodom import OtodomScraper
 from src.auth import check_auth, delete_user_offers
+from src.i18n import LANGUAGES
+T = LANGUAGES[st.session_state.get('lang', 'PL')]
 
 # 1. KONFIGURACJA STRONY (Musi być pierwsza!)
 st.set_page_config(page_title="Scraper - Pobieranie Danych", layout="wide")
