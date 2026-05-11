@@ -2,17 +2,17 @@ import streamlit as st
 import time
 
 from src.auth import (
-    login_user,
-    register_user,
-    init_auth_db,
     check_auth,
+    init_auth_db,
     login_session,
-    logout_session
+    login_user,
+    logout_session,
+    register_user
 )
 
-# ---------------------------------------------------
+# =========================================================
 # PAGE CONFIG
-# ---------------------------------------------------
+# =========================================================
 
 st.set_page_config(
     page_title="System Analizy",
@@ -20,61 +20,43 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ---------------------------------------------------
+# =========================================================
 # INIT
-# ---------------------------------------------------
+# =========================================================
 
 init_auth_db()
 
-if 'lang' not in st.session_state:
-    st.session_state.lang = "PL"
-
-# ---------------------------------------------------
-# LANG
-# ---------------------------------------------------
-
-st.sidebar.radio(
-    "Language / Język",
-    options=["PL", "EN"],
-    key="lang_selector",
-    on_change=lambda:
-        st.session_state.update({
-            "lang":
-                st.session_state.lang_selector
-        })
-)
-
-# ---------------------------------------------------
+# =========================================================
 # AUTH
-# ---------------------------------------------------
+# =========================================================
 
 logged = check_auth()
 
-# ---------------------------------------------------
+# =========================================================
 # LOGIN SCREEN
-# ---------------------------------------------------
+# =========================================================
 
 if not logged:
 
-    st.title("🔐 System Analizy Nieruchomości")
+    st.title(
+        "🔐 System Analizy Nieruchomości"
+    )
 
-    tab_l, tab_r = st.tabs([
+    tab1, tab2 = st.tabs([
         "Logowanie",
         "Rejestracja"
     ])
 
     # LOGIN
-    with tab_l:
+    with tab1:
 
-        u = st.text_input(
-            "Login",
-            key="login_u"
+        username = st.text_input(
+            "Login"
         )
 
-        p = st.text_input(
+        password = st.text_input(
             "Hasło",
-            type="password",
-            key="login_p"
+            type="password"
         )
 
         if st.button(
@@ -82,15 +64,18 @@ if not logged:
             use_container_width=True
         ):
 
-            if login_user(u, p):
+            if login_user(
+                username,
+                password
+            ):
 
-                login_session(u)
+                login_session(username)
 
                 st.success(
-                    "Zalogowano pomyślnie!"
+                    "Zalogowano!"
                 )
 
-                time.sleep(0.5)
+                time.sleep(1)
 
                 st.rerun()
 
@@ -101,17 +86,15 @@ if not logged:
                 )
 
     # REGISTER
-    with tab_r:
+    with tab2:
 
-        nu = st.text_input(
-            "Nowy Login",
-            key="reg_u"
+        new_user = st.text_input(
+            "Nowy login"
         )
 
-        np = st.text_input(
-            "Nowe Hasło",
-            type="password",
-            key="reg_p"
+        new_pass = st.text_input(
+            "Nowe hasło",
+            type="password"
         )
 
         if st.button(
@@ -119,37 +102,39 @@ if not logged:
             use_container_width=True
         ):
 
-            if register_user(nu, np):
+            if register_user(
+                new_user,
+                new_pass
+            ):
 
                 st.success(
-                    "Konto utworzone!"
+                    "Konto utworzone"
                 )
 
             else:
 
                 st.error(
-                    "Użytkownik istnieje."
+                    "Użytkownik istnieje"
                 )
 
     st.stop()
 
-# ---------------------------------------------------
+# =========================================================
 # APP
-# ---------------------------------------------------
+# =========================================================
 
 st.sidebar.success(
     f"Zalogowano jako: "
-    f"{st.session_state['username']}"
+    f"{st.session_state.username}"
 )
 
 if st.sidebar.button("Wyloguj"):
+
     logout_session()
+
+    st.rerun()
 
 st.title(
     f"Witaj "
-    f"{st.session_state['username']} 👋"
-)
-
-st.info(
-    "Sesja utrzymuje się po F5 i restarcie przeglądarki."
+    f"{st.session_state.username} 👋"
 )
