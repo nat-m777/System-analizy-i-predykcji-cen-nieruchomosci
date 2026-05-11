@@ -12,25 +12,68 @@ class DBManager:
         self.fix_schema()
 
     def create_tables(self):
-        query = """
-        CREATE TABLE IF NOT EXISTS offers (
-            id SERIAL PRIMARY KEY,
-            title TEXT,
-            city TEXT,
-            district TEXT,
-            subdistrict TEXT,
-            price FLOAT,
-            area FLOAT,
-            rooms INTEGER,
-            price_per_m2 FLOAT,
-            url TEXT UNIQUE,
-            source TEXT,
-            scrape_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            owner TEXT
-        );
-        """
         with self.engine.begin() as conn:
-            conn.execute(text(query))
+            # 1. Tabela USERS (Zgodnie z Twoim opisem)
+            # UWAGA: Dodałem PRIMARY KEY na username, aby móc robić relacje
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS users (
+                    username TEXT PRIMARY KEY,
+                    password_hash TEXT NOT NULL
+                );
+            """))
+
+            # 2. Tabela OFFERS 
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS offers (
+                    id SERIAL PRIMARY KEY,
+                    title TEXT,
+                    city TEXT,
+                    district TEXT,
+                    price DOUBLE PRECISION,
+                    area DOUBLE PRECISION,
+                    rooms INTEGER,
+                    price_per_m2 DOUBLE PRECISION,
+                    source TEXT,
+                    scrape_date TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    url TEXT,
+                    subdistrict TEXT,
+                    owner TEXT DEFAULT 'admin',
+                    username TEXT
+                );
+            """))
+
+            # 3. Tabela SEARCH_HISTORY 
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS search_history (
+                    id SERIAL PRIMARY KEY,
+                    username TEXT,
+                    city TEXT,
+                    districts TEXT,
+                    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                );
+            """))
+
+            # 4. Tabela ACHIEVEMENTS
+            # Powiązana przez username, z unikalnością pary (użytkownik, nazwa osiągnięcia)
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS achievements (
+                    id SERIAL PRIMARY KEY,
+                    username TEXT REFERENCES users(username) ON DELETE CASCADE,
+                    achievement_name TEXT NOT NULL,
+                    achieved_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(username, achievement_name)
+                );
+            """))
+            # 5. tabela do statystyk uzytkownika przy odblokowywaniu achievementow
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS user_stats (
+                    username TEXT PRIMARY KEY REFERENCES users(username) ON DELETE CASCADE,
+                    cities_viewed_count INTEGER DEFAULT 0,
+                    charts_generated_count INTEGER DEFAULT 0,
+                    valuation_requests_count INTEGER DEFAULT 0,
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """))
 
     def fix_schema(self):
         """Dodaje brakujące kolumny, jeśli baza została utworzona wcześniej."""
@@ -98,3 +141,72 @@ class DBManager:
         with self.engine.begin() as conn:
             conn.execute(query)
         return True
+    # Poprawione: używamy username zamiast user_id
+    def unlock_achievement(self, username, achievement_name):
+        query = text("""
+            INSERT INTO achievements (username, achievement_name) 
+            VALUES (:u, :name) 
+            ON CONFLICT DO NOTHING
+        """)
+        with self.engine.begin() as conn:
+            conn.execute(query, {"u": username, "name": achievement_name})
+
+    def get_user_achievements(self, username):
+        query = text("SELECT achievement_name FROM achievements WHERE username = :u")
+        with self.engine.connect() as conn:
+            result = conn.execute(query, {"u": username}).fetchall()
+            return [r[0] for r in result]
+
+    # NOWA METODA: Aktualizacja statystyk w bazie
+    def update_stat(self, username, column_name, value=1, increment=True):
+        """
+        Aktualizuje licznik w bazie. 
+        Jeśli increment=True, dodaje 'value' do obecnej wartości.
+        Jeśli increment=False, ustawia wartość na sztywno (np. dla liczby miast).
+        """
+        if increment:
+            query = text(f"""
+                INSERT INTO user_stats (username, {column_name}) 
+                VALUES (:u, :v) 
+                ON CONFLICT (username) 
+                DO UPDATE SET {column_name} = user_stats.{column_name} + :v, last_updated = CURRENT_TIMESTAMP
+            """)
+        else:
+            query = text(f"""
+                INSERT INTO user_stats (username, {column_name}) 
+                VALUES (:u, :v) 
+                ON CONFLICT (username) 
+                DO UPDATE SET {column_name} = :v, last_updated = CURRENT_TIMESTAMP
+            """)
+            
+        with self.engine.begin() as conn:
+            conn.execute(query, {"u": username, "v": value})
+    def check_and_update_achievements(self, username):
+        """Logika sprawdzania i przyznawania osiągnięć po stronie managera bazy."""
+        # 1. Pobierz aktualne statystyki
+        query = text("SELECT cities_viewed_count, charts_generated_count, valuation_requests_count FROM user_stats WHERE username = :u")
+        with self.engine.connect() as conn:
+            res = conn.execute(query, {"u": username}).fetchone()
+        
+        if not res:
+            return []
+
+        s_cities, s_charts, s_valuations = res
+        unlocked = self.get_user_achievements(username)
+        newly_unlocked = []
+
+        # Definicja progów i nazw
+        achievements_to_check = [
+            ("Badacz rynku", s_cities >= 3),
+            ("Eksplorator danych", s_charts >= 10),
+            ("Porównywacz miast", s_cities >= 5),
+            ("Specjalista od metrażu", s_charts >= 15),
+            ("Ekspert wyceny", s_valuations >= 25)
+        ]
+
+        for name, condition in achievements_to_check:
+            if condition and name not in unlocked:
+                self.unlock_achievement(username, name)
+                newly_unlocked.append(name)
+                
+        return newly_unlocked # Zwracamy listę nowych medali, by wyświetlić toast w UI
