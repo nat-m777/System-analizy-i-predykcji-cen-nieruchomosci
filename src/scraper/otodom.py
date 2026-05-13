@@ -5,487 +5,162 @@ from selenium.webdriver.chrome.options import Options
 import pandas as pd
 import time
 import os
-
+import re
 
 class OtodomScraper:
-
     def __init__(self):
         self.driver = None
         self.all_results = []
 
-    # =====================================================
-    # DRIVER
-    # =====================================================
+    def clean_slug(self, text):
+        """
+        Dostosowuje nazwy do formatu Otodom (np. Praga-Północ -> praga--polnoc).
+        """
+        text = text.lower().strip()
+        # Mapa polskich znaków
+        chars = {
+            'ą': 'a', 'ć': 'c', 'ę': 'e', 'ł': 'l', 'ń': 'n', 
+            'ó': 'o', 'ś': 's', 'ź': 'z', 'ż': 'z'
+        }
+        for pol, lat in chars.items():
+            text = text.replace(pol, lat)
+        
+        # Logika podwójnego myślnika dla Otodom
+        if '-' in text:
+            text = text.replace('-', '--')
+        
+        # Zamiana spacji na myślniki (dla dzielnic typu 'Stare Miasto')
+        text = text.replace(' ', '-')
+        
+        # Usuwanie znaków specjalnych
+        text = re.sub(r'[^a-z0-9\-]', '', text)
+        return text
+
     def start_driver(self):
-
+        """Inicjalizuje przeglądarkę w trybie headless."""
+        if self.driver: return
         options = Options()
-
-        # Docker-safe headless
         options.add_argument("--headless=new")
-
-        # Stability
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--window-size=1920,1080")
-
-        # Anti detection
         options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
 
-        # Fake normal browser
-        options.add_argument(
-            "user-agent=Mozilla/5.0 "
-            "(Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 "
-            "(KHTML, like Gecko) "
-            "Chrome/122.0.0.0 Safari/537.36"
-        )
+        chrome_bin = os.getenv("CHROME_BIN", "/usr/bin/chromium")
+        driver_path = os.getenv("CHROMEDRIVER_PATH", "/usr/bin/chromedriver")
+        
+        try:
+            if os.path.exists(chrome_bin):
+                options.binary_location = chrome_bin
+            service = Service(driver_path)
+            self.driver = webdriver.Chrome(service=service, options=options)
+        except Exception as e:
+            # Fallback dla środowisk lokalnych
+            self.driver = webdriver.Chrome(options=options)
 
-        # Chromium path (Docker)
-        options.binary_location = os.getenv(
-            "CHROME_BIN",
-            "/usr/bin/chromium"
-        )
-
-        service = Service(
-            os.getenv(
-                "CHROMEDRIVER_PATH",
-                "/usr/bin/chromedriver"
-            )
-        )
-
-        self.driver = webdriver.Chrome(
-            service=service,
-            options=options
-        )
-
-        # Hide Selenium
-        self.driver.execute_cdp_cmd(
-            "Page.addScriptToEvaluateOnNewDocument",
-            {
-                "source": """
-                    Object.defineProperty(navigator, 'webdriver', {
-                        get: () => undefined
-                    })
-                """
-            },
-        )
-
-        print("✅ Selenium driver started")
-
-    # =====================================================
-    # CLOSE
-    # =====================================================
     def close_driver(self):
-
+        """Metoda, której brakowało – bezpiecznie zamyka sesję Selenium."""
         if self.driver:
-            self.driver.quit()
+            try:
+                self.driver.quit()
+            except:
+                pass
             self.driver = None
 
-    # =====================================================
-    # SCRAPE SINGLE PAGE
-    # =====================================================
     def scrape_page(self, url, page):
-
+        """Pobiera dane JSON z konkretnej strony wyników."""
         full_url = f"{url}?page={page}"
-
-        print(f"➡️ {full_url}")
-
-        self.driver.get(full_url)
-
-        time.sleep(4)
-
+        print(f"🔍 Scrapowanie: {full_url}")
+        
         try:
-
-            data = self.driver.execute_script(
-                "return window.__NEXT_DATA__"
-            )
-
-            items = (
-                data["props"]["pageProps"]["data"]
-                ["searchAds"]["items"]
-            )
-
-            print(f"✅ {len(items)} offers")
-
+            self.driver.get(full_url)
+            time.sleep(4) 
+            data = self.driver.execute_script("return window.__NEXT_DATA__")
+            
+            props = data.get("props", {}).get("pageProps", {})
+            items = props.get("data", {}).get("searchAds", {}).get("items", [])
+            
+            # Rezerwowa ścieżka w JSONie
+            if not items:
+                items = props.get("searchAds", {}).get("items", [])
+                
             return items
-
         except Exception as e:
-
-            print(f"❌ Scrape error: {e}")
-
-            self.driver.save_screenshot(
-                f"debug_page_{page}.png"
-            )
-
-            print(self.driver.page_source[:1500])
-
+            print(f"⚠️ Błąd Selenium: {e}")
             return []
 
-    # =====================================================
-    # PARSE OFFERS
-    # =====================================================
-    def parse_offers(
-        self,
-        offers,
-        city,
-        district
-    ):
-
-        room_map = {
-            "ONE": 1,
-            "TWO": 2,
-            "THREE": 3,
-            "FOUR": 4,
-            "FIVE": 5
-        }
-
+    def parse_offers(self, offers, city, district):
+        """Wyciąga potrzebne informacje z surowego JSONa."""
+        room_map = {"ONE": 1, "TWO": 2, "THREE": 3, "FOUR": 4, "FIVE": 5}
         for offer in offers:
-
-            price_data = offer.get("totalPrice") or {}
-            location_data = offer.get("location") or {}
-            address_data = location_data.get("address") or {}
-
-            price = price_data.get("value")
-            area = offer.get("areaInSquareMeters")
-            rooms = offer.get("roomsNumber")
-            room_map = {
-                "ONE": 1,
-                "TWO": 2,
-                "THREE": 3,
-                "FOUR": 4,
-                "FIVE": 5,
-                "SIX": 6,
-                "SEVEN": 7,
-                "EIGHT": 8,
-                "NINE": 9,
-                "TEN": 10
-            }
-
-            if isinstance(rooms, str):
-                rooms = room_map.get(
-                    rooms.upper(),
-                    None
-                )
-
             try:
-                price = float(price) if price else None
+                price = offer.get("totalPrice", {}).get("value")
+                area = offer.get("areaInSquareMeters")
+                rooms = offer.get("roomsNumber")
+                
+                if isinstance(rooms, str):
+                    rooms = room_map.get(rooms.upper(), rooms)
+
+                self.all_results.append({
+                    "title": offer.get("title"),
+                    "city": city.capitalize(),
+                    "district": district,
+                    "price": float(price) if price else None,
+                    "area": float(area) if area else None,
+                    "rooms": rooms,
+                    "url": "https://www.otodom.pl/pl/oferta/" + str(offer.get("slug", "")),
+                    "scrape_date": pd.Timestamp.now()
+                })
             except:
-                price = None
+                continue
 
-            try:
-                area = float(area) if area else None
-            except:
-                area = None
-
-            if isinstance(rooms, str):
-                rooms = room_map.get(
-                    rooms.upper(),
-                    None
-                )
-
-            price_per_m2 = None
-
-            if price and area:
-                price_per_m2 = price / area
-
-            self.all_results.append({
-
-                "title": offer.get("title"),
-
-                "city": city.capitalize(),
-
-                "district": district,
-
-                "subdistrict": (
-                    address_data.get("district")
-                    or address_data.get("subdistrict")
-                ),
-
-                "price": price,
-
-                "area": area,
-
-                "rooms": rooms,
-
-                "price_per_m2": price_per_m2,
-
-                "url": (
-                    "https://www.otodom.pl/pl/oferta/"
-                    + str(offer.get("slug"))
-                    if offer.get("slug")
-                    else None
-                ),
-
-                "source": "Otodom",
-
-                "scrape_date": pd.Timestamp.now()
-            })
-
-    # =====================================================
-    # FETCH DATA
-    # =====================================================
-    def fetch_data(
-        self,
-        city,
-        max_pages=2,
-        selected_districts=None
-    
-    ):
-
+    def fetch_data(self, city, max_pages=2, selected_districts=None):
         self.all_results = []
-
-        city = city.lower()
-
+        city_slug = self.clean_slug(city).replace('--', '-') # Miasta zawsze mają jeden myślnik
+        
         city_regions = {
-
-            "warszawa": "mazowieckie",
-
-            "gdansk": "pomorskie",
-
-            "krakow": "malopolskie",
-
-            "wroclaw": "dolnoslaskie",
-
-            "poznan": "wielkopolskie",
-
-            "lodz": "lodzkie"
+            "warszawa": "mazowieckie", "krakow": "malopolskie", 
+            "wroclaw": "dolnoslaskie", "poznan": "wielkopolskie", 
+            "gdansk": "pomorskie", "lodz": "lodzkie"
         }
+        region = city_regions.get(city_slug)
 
-        region = city_regions.get(city)
-
-        if not region:
-            raise ValueError(
-                f"Unsupported city: {city}"
-            )
-
-        if not selected_districts:
+        if not region or not selected_districts:
             return pd.DataFrame()
 
         self.start_driver()
 
-        for district in selected_districts:
-
-            try:
-
-                print(
-                    f"\n🏘️ Scraping district: {district}"
-                )
-
-                # IMPORTANT:
-                # Otodom weird routing structure
-                url = (
-                    f"https://www.otodom.pl/pl/wyniki/"
-                    f"sprzedaz/mieszkanie/"
-                    f"{region}/"
-                    f"{city}/"
-                    f"{city}/"
-                    f"{city}/"
-                    f"{district}"
-                )
-
-                for page in range(1, max_pages + 1):
-
-                    offers = self.scrape_page(
-                        url,
-                        page
-                    )
-
-                    if not offers:
-
-                        print(
-                            f"⚠️ No offers on page {page}"
-                        )
-
-                        break
-
-                    self.parse_offers(
-                        offers,
-                        city,
-                        district
-                    )
-
-                    time.sleep(2)
-
-            except Exception as e:
-
-                print(
-                    f"❌ District error "
-                    f"{district}: {e}"
-                )
-
-        self.close_driver()
-
-        df = pd.DataFrame(self.all_results)
-
-        if not df.empty:
-
-            df["price"] = pd.to_numeric(
-                df["price"],
-                errors="coerce"
-            )
-
-            df["area"] = pd.to_numeric(
-                df["area"],
-                errors="coerce"
-            )
-            df["rooms"] = pd.to_numeric(
-                df["rooms"],
-                errors="coerce"
-            )
-
-            df = df.dropna(
-                subset=["price", "area"]
-            )
-
-            df["price_per_m2"] = (
-                df["price"] / df["area"]
-            )
-           
-
-        return df
-
-    # =====================================================
-    # GET DISTRICTS
-    # =====================================================
-    def get_districts(
-        self,
-        city="warszawa",
-        region="mazowieckie"
-    ):
-
-        self.start_driver()
-
-        url = (
-            f"https://www.otodom.pl/pl/wyniki/"
-            f"sprzedaz/mieszkanie/"
-            f"{region}/{city}"
-        )
-
-        self.driver.get(url)
-
-        time.sleep(4)
-
         try:
+            for district in selected_districts:
+                # 1. Przygotuj oba warianty sluga
+                slug_double = self.clean_slug(district) # np. nowe--miasto
+                slug_single = slug_double.replace('--', '-') # np. nowe-miasto
+                
+                # Próbujemy obu wariantów, zaczynając od tego z Twojego przykładu (single)
+                found_for_district = False
+                for current_slug in [slug_single, slug_double]:
+                    if found_for_district: break
+                    
+                    base_url = f"https://www.otodom.pl/pl/wyniki/sprzedaz/mieszkanie/{region}/{city_slug}/{city_slug}/{city_slug}/{current_slug}"
+                    
+                    # Sprawdzamy pierwszą stronę
+                    offers = self.scrape_page(base_url, 1)
+                    if offers:
+                        print(f"✅ Trafienie! Slug '{current_slug}' działa dla {district}")
+                        self.parse_offers(offers, city, district)
+                        found_for_district = True
+                        
+                        # Pobieramy resztę stron jeśli potrzeba
+                        for page in range(2, max_pages + 1):
+                            more_offers = self.scrape_page(base_url, page)
+                            if more_offers:
+                                self.parse_offers(more_offers, city, district)
+                            else:
+                                break
+                    else:
+                        print(f"... slug '{current_slug}' nie zwrócił wyników, sprawdzam dalej.")
 
-            data = self.driver.execute_script(
-                "return window.__NEXT_DATA__"
-            )
-
-            filters = (
-                data["props"]["pageProps"]["data"]
-                ["searchAds"]["filters"]
-            )
-
-            location_filter = next(
-                f for f in filters
-                if f.get("name") == "locations"
-            )
-
-            districts = []
-
-            for d in location_filter.get(
-                "options",
-                []
-            ):
-
-                districts.append({
-
-                    "name": d.get("label"),
-
-                    "slug": d.get("value")
-                })
-
+        finally:
             self.close_driver()
 
-            return districts
-
-        except Exception as e:
-
-            print(
-                f"❌ District fetch error: {e}"
-            )
-
-            self.close_driver()
-
-            return []
-
-
-# =====================================================
-# STREAMLIT UI
-# =====================================================
-
-# =====================================================
-# SELECT DISTRICTS
-# =====================================================
-
-if "districts" in st.session_state:
-
-    district_map = {
-
-        d["name"]: d["slug"]
-
-        for d in st.session_state["districts"]
-    }
-
-    selected_names = st.multiselect(
-        "Select districts",
-        list(district_map.keys())
-    )
-
-    max_pages = st.slider(
-        "Pages per district",
-        1,
-        10,
-        2
-    )
-
-    # =================================================
-    # SCRAPE
-    # =================================================
-
-    if st.button("Start scraping"):
-
-        selected_slugs = [
-
-            district_map[name]
-
-            for name in selected_names
-        ]
-
-        with st.spinner("Scraping offers..."):
-
-            df = scraper.fetch_data(
-                city=city,
-                max_pages=max_pages,
-                selected_districts=selected_slugs
-            )
-
-        if df.empty:
-
-            st.error(
-                "❌ No offers downloaded"
-            )
-
-        else:
-
-            st.success(
-                f"✅ Downloaded "
-                f"{len(df)} offers"
-            )
-
-            st.dataframe(
-                df,
-                width="stretch"
-            )
-
-            csv = df.to_csv(
-                index=False
-            ).encode("utf-8")
-
-            st.download_button(
-                "📥 Download CSV",
-                csv,
-                file_name="otodom_offers.csv",
-                mime="text/csv"
-            )
+        return pd.DataFrame(self.all_results)

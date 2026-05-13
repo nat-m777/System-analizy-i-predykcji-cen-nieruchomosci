@@ -291,3 +291,12 @@ def get_search_history(username):
 
     except:
         return []
+    
+
+def delete_user_offers(username):
+    """Usuwa wszystkie oferty przypisane do danego użytkownika."""
+    with engine.begin() as conn:
+        conn.execute(
+            text("DELETE FROM offers WHERE username=:u"),
+            {"u": username}
+        )

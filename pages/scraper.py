@@ -58,7 +58,7 @@ city_config = {
     "Krakow": ["stare-miasto", "grzegorzki", "pradnik-czerwony", "pradnik-bialy", "krowodrza", "bronowice", "zwierzyniec", "debniki", "lagiewniki-borek-falecki", "swoszowice", "podgorze-duchackie", "biezanow-prokocim", "podgorze", "czyzyny", "mistrzejowice", "bienczyce", "nowa-huta", "wzgorza-krzeslawickie"],
     "Wroclaw": ["stare-miasto", "srodmiescie", "krzyki", "fabryczna", "psie-pole"],
     "Gdansk": ["aniolki", "brzezno", "chelm", "jasien", "jelitkowo", "kokoszki", "letnica", "matarnia", "mlyniska", "nowy-port", "oliwa", "olszynka", "orunia", "osowa", "piecki-migowo", "przerobka", "przymorze", "rudniki", "siedlce", "stogi", "strzyza", "suchanino", "srodmiescie", "wrzeszcz", "zaspa", "zabianka"],
-    "Poznan": ["grunwald", "jezyce", "nowe-miasto", "stare-miasto", "wildaj"],
+    "Poznan": ["grunwald", "jezyce", "nowe-miasto", "stare-miasto", "wilda"],
     "Lodz": ["baluty", "gorna", "polesie", "srodmiescie", "widzew"]
 }
 
@@ -117,7 +117,7 @@ if manual_trigger or st.session_state["trigger_scrape"]:
                 st.balloons()
                 
                 with st.expander("Podgląd danych"):
-                    st.dataframe(final_df.head(20))
+                    st.dataframe(final_df.head(len(final_df)))
             else:
                 st.error("Błąd: Dane po oczyszczeniu są puste.")
         else:
