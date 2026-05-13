@@ -1,10 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
-from io import BytesIO
-from fpdf import FPDF
 from src.utils import get_db, clean_df
-from src.analysis.charts import show_price_prediction_logic
 from src.auth import check_auth
 
 # --- KONFIGURACJA JĘZYKOWA ---
@@ -57,7 +53,95 @@ LANGUAGES = {
         "reg_pass": "Nowe hasło",
         "reg_btn": "Zarejestruj się",
         "logout_btn": "Wyloguj",
-        "welcome_msg": "Wybierz moduł z menu po lewej stronie, aby rozpocząć pracę."
+        "welcome_msg": "Wybierz moduł z menu po lewej stronie, aby rozpocząć pracę.",
+        "dash_title": "📊 Przegląd Rynku Nieruchomości",
+        "dash_filters": "🔍 Filtry",
+        "dash_select_city": "Wybierz Miasto",
+        "dash_select_dist": "Wybierz Dzielnicę",
+        "dash_avg_m2": "Śr. cena/m²",
+        "dash_deals": "🔥 Okazje",
+        "dash_premium": "💎 Premium",
+        "dash_tab_anomalies": "🚩 Anomalie",
+        "dash_tab_history": "📜 Historia",
+        "dash_no_anomalies": "Brak anomalii w wybranym obszarze.",
+        "dash_export_bal": "📥 Eksportuj wyniki (zrównoważone)",
+        "dash_top100_csv": "📥 Pobierz TOP 100 CSV",
+        "dash_gen_pdf": "📄 Generuj raport PDF",
+        "dash_download_pdf": "🔥 Pobierz gotowy PDF",
+        "dash_preview": "📋 Podgląd danych",
+        "dash_status_norm": "✅ W normie",
+        "chart_price_dist": "Rozkład cen nieruchomości",
+        "chart_area_price": "Zależność ceny od powierzchni",
+        "chart_price_label": "Cena (PLN)",
+        "chart_count_label": "Liczba ofert",
+        "chart_rooms_label": "Liczba pokoi",
+        "chart_prediction_title": "Przewidywana wartość rynkowa",
+        "chart_median_area": "Mediana cen w okolicy",
+        "error_pdf": "❌ Błąd podczas generowania raportu PDF.",
+        "error_db": "❌ Błąd połączenia z bazą danych.",
+        "success_valuation": "✅ Wycena została pomyślnie zapisana w historii.",
+        "unit_pln_m2": "zł/m²",
+        "pdf_date": "Data", 
+        "pdf_value": "WARTOŚĆ",
+        "duel_page_title": "Pojedynek: Statystyka vs ML",
+        "duel_title": "⚖️ Statystyka vs Machine Learning",
+        "duel_desc": "Sprawdź, jak różnią się wyniki tradycyjnej analizy średnich od zaawansowanego modelu predykcyjnego.",
+        "duel_params_header": "Parametry nieruchomości",
+        "duel_stat_val": "Wycena Statystyczna",
+        "duel_stat_cap": "Oparta na średniej cenie m² w lokalizacji",
+        "duel_ml_val": "Wycena Machine Learning",
+        "duel_ml_cap": "Oparta na modelu Random Forest (wiele cech)",
+        "duel_diff_label": "Różnica metod",
+        "duel_higher": "📈 ML wycenia wyżej",
+        "duel_lower": "📉 ML wycenia niżej",
+        "duel_method_col": "Metoda",
+        "duel_price_col": "Cena [PLN]",
+        "duel_chart_title": "Porównanie kwotowe metod wyceny",
+        "duel_expander_title": "🧐 Dlaczego wyniki się różnią?",
+        "duel_explanation": """
+        **Statystyka (Średnia):** Bierze pod uwagę tylko cenę za metr w danym mieście/dzielnicy. Nie uwzględnia, czy mieszkanie ma 1 czy 5 pokoi w specyficzny sposób.
+        **Machine Learning:** Analizuje nieliniowe zależności. Model 'nauczył się', że np. w tej konkretnej dzielnicy małe mieszkania dwupokojowe są warte znacznie więcej niż wynikałoby to tylko ze średniej ceny metra.
+        """,
+        "duel_no_model": "⚠️ Model ML nie jest gotowy lub brak danych dla tej lokalizacji.",
+        "ml_too_little_data": "❌ Zbyt mało danych do trenowania (wymagane min. 10 ofert).",
+        "ml_train_success": "✅ Model ML został zaktualizowany pomyślnie!", 
+        "ml_page_title": "Inteligentna Wycena (Machine Learning)",
+        "ml_manage_model": "Zarządzanie modelem",
+        "ml_train_btn": "🔄 Wytrenuj model na danych",
+        "ml_calc_btn": "💰 Oblicz cenę przez AI",
+        "ml_last_result": "Ostatni wynik analizy",
+        "pdf_title_ml": "RAPORT INTELIGENTNEJ WYCENY ML",
+        "result_msg_short": "Sugerowana wartość",
+        "tab_cities": "Ranking TOP 6 Miast",
+        "comp_desc": "Porównaj średnie ceny mieszkań dla **TOP 6** miast w Polsce.",
+        "comp_chart_avg": "Porównanie Średniej Ceny za m²",
+        "comp_table_header": "Zestawienie Rankingowe",
+        "dash_filters": "Filtry Rankingu",
+        "dash_select_city": "Miasto",
+        "dash_avg_m2": "Śr. cena za m²",
+        "metric_offers": "Liczba ofert",
+        "area_label": "Metraż (m²)",
+        "rooms_label": "Liczba pokoi",
+        "no_data": "⚠️ Brak danych spełniających wybrane kryteria.",
+        "error_db": "Błąd sesji lub bazy danych. Zaloguj się ponownie.",
+        "scraper_title": "Pobieranie danych z Otodom",
+        "auto_refresh_msg": "Minęło 5 minut. Czy chcesz ponownie pobrać dane?",
+        "yes_btn": "Tak, pobierz",
+        "no_btn": "Nie teraz",
+        "pages_label": "Liczba stron na dzielnicę",
+        "run_scraper_btn": "🚀 Uruchom pobieranie",
+        "error_no_districts": "Wybierz przynajmniej jedną dzielnicę!",
+        "scraping_msg": "Pobieranie danych",
+        "scrape_success": "✅ Zapisano {count} ofert dla użytkownika.",
+        "settings_header": "Ustawienia",
+        "toggle_auto_refresh": "Autoodświeżanie (5 min)",
+        "db_mgmt_header": "Zarządzanie bazą",
+        "delete_warning": "Uwaga: Usuniesz tylko SWOJE dane.",
+        "confirm_label": "Potwierdzam chęć usunięcia",
+        "delete_btn": "🗑️ Wyczyść moje oferty",
+        "deleted_msg": "Wyczyszczono pomyślnie!",
+        "error_no_results": "Nie pobrano żadnych danych.",
+        "error_empty_data": "Błąd: Dane są puste po oczyszczeniu."
     },
     "EN": {
         "page_title": "Analysis and Valuation",
@@ -107,55 +191,124 @@ LANGUAGES = {
         "reg_pass": "New Password",
         "reg_btn": "Create Account",
         "logout_btn": "Logout",
-        "welcome_msg": "Select a module from the menu on the left to start working."
+        "welcome_msg": "Select a module from the menu on the left to start working.",
+        "dash_title": "📊 Real Estate Market Overview",
+        "dash_filters": "🔍 Filters",
+        "dash_select_city": "Select City",
+        "dash_select_dist": "Select District",
+        "dash_avg_m2": "Avg price/m²",
+        "dash_deals": "🔥 Hot Deals",
+        "dash_premium": "💎 Premium",
+        "dash_tab_anomalies": "🚩 Anomalies",
+        "dash_tab_history": "📜 History",
+        "dash_no_anomalies": "No anomalies found in the selected area.",
+        "dash_export_bal": "📥 Export results (balanced)",
+        "dash_top100_csv": "📥 Download TOP 100 CSV",
+        "dash_gen_pdf": "📄 Generate PDF Report",
+        "dash_download_pdf": "🔥 Download PDF Report",
+        "dash_preview": "📋 Data Preview",
+        "dash_status_norm": "✅ Normal",
+        "chart_price_dist": "Property Price Distribution",
+        "chart_area_price": "Price vs. Area Relationship",
+        "chart_price_label": "Price (PLN)",
+        "chart_count_label": "Offer Count",
+        "chart_rooms_label": "Rooms",
+        "chart_prediction_title": "Estimated Market Value",
+        "chart_median_area": "Median price in area",
+        "error_pdf": "❌ Error generating PDF report.",
+        "error_db": "❌ Database connection error.",
+        "success_valuation": "✅ Valuation successfully saved in history.",
+        "unit_pln_m2": "PLN/sqm",
+        "chart_prediction_title": "Estimated Market Value",
+        "chart_median_area": "Median price in the area",
+        "pdf_date": "Date", 
+        "pdf_value": "VALUE",
+        "duel_page_title": "Duel: Stats vs ML",
+        "duel_title": "⚖️ Statistics vs Machine Learning",
+        "duel_desc": "Compare results from traditional average-based analysis vs a predictive machine learning model.",
+        "duel_params_header": "Property Parameters",
+        "duel_stat_val": "Statistical Valuation",
+        "duel_stat_cap": "Based on average price per sqm in location",
+        "duel_ml_val": "Machine Learning Valuation",
+        "duel_ml_cap": "Based on Random Forest model (multi-feature)",
+        "duel_diff_label": "Method Difference",
+        "duel_higher": "📈 ML values higher",
+        "duel_lower": "📉 ML values lower",
+        "duel_method_col": "Method",
+        "duel_price_col": "Price [PLN]",
+        "duel_chart_title": "Value Comparison by Method",
+        "duel_expander_title": "🧐 Why are the results different?",
+        "duel_explanation": """
+        **Statistics (Average):** Only considers the price per sqm in a given city/district. It doesn't nuancedly account for the specific room count.
+        **Machine Learning:** Analyzes non-linear relationships. The model has 'learned' that, for example, in this specific district, small 2-room apartments are worth much more than the simple average price per sqm would suggest.
+        """,
+        "duel_no_model": "⚠️ ML model is not ready or data for this location is missing.",
+        "ml_too_little_data": "❌ Not enough data to train (min. 10 offers required).",
+        "ml_train_success": "✅ ML Model trained and updated successfully!",
+        "ml_page_title": "Smart Valuation (Machine Learning)",
+        "ml_manage_model": "Model Management",
+        "ml_train_btn": "🔄 Train model on data",
+        "ml_calc_btn": "💰 Calculate price via AI",
+        "ml_last_result": "Latest analysis result",
+        "pdf_title_ml": "ML SMART VALUATION REPORT",
+        "result_msg_short": "Suggested value",
+        "tab_cities": "TOP 6 Cities Ranking",
+        "comp_desc": "Compare average apartment prices for the **TOP 6** cities in Poland.",
+        "comp_chart_avg": "Average Price per sqm Comparison",
+        "comp_table_header": "Ranking Summary Table",
+        "dash_filters": "Ranking Filters",
+        "dash_select_city": "City",
+        "dash_avg_m2": "Avg price per sqm",
+        "metric_offers": "Number of Offers",
+        "area_label": "Area (sqm)",
+        "rooms_label": "Number of rooms",
+        "no_data": "⚠️ No data found for the selected criteria.",
+        "error_db": "Session or database error. Please log in again.",
+        "scraper_title": "Otodom Data Scraper",
+        "auto_refresh_msg": "5 minutes have passed. Do you want to refresh the data?",
+        "yes_btn": "Yes, scrape now",
+        "no_btn": "Not now",
+        "pages_label": "Pages per district",
+        "run_scraper_btn": "🚀 Start Scraper",
+        "error_no_districts": "Please select at least one district!",
+        "scraping_msg": "Scraping data",
+        "scrape_success": "✅ Saved {count} offers for the user.",
+        "settings_header": "Settings",
+        "toggle_auto_refresh": "Auto-refresh (5 min)",
+        "db_mgmt_header": "Database Management",
+        "delete_warning": "Warning: Only YOUR data will be deleted.",
+        "confirm_label": "I confirm deletion",
+        "delete_btn": "🗑️ Clear my offers",
+        "deleted_msg": "Cleared successfully!",
+        "error_no_results": "No data was scraped.",
+        "error_empty_data": "Error: Data is empty after cleaning."
+        
     }
 }
+# --- 2. KONFIGURACJA STRONY I INICJALIZACJA ---
 
-# 1. KONFIGURACJA STRONY
 st.set_page_config(page_title="Valuation App", layout="wide")
-
-# 2. ZABEZPIECZENIE I INICJALIZACJA SESJI
 check_auth()
 
 if 'lang' not in st.session_state:
-    st.session_state.lang = "PL"  # Domyślnie Polski
+    st.session_state.lang = "PL"
 
 if 'last_valuation' not in st.session_state:
     st.session_state.last_valuation = None
 
-# --- UI DO WYBORU JĘZYKA W SIDEBARZE ---
+# Sidebar do wyboru języka
 with st.sidebar:
-    st.session_state.lang = st.radio("Language / Język", options=["PL", "EN"], index=0 if st.session_state.lang == "PL" else 1)
+    st.session_state.lang = st.radio("Language / Język", options=["PL", "EN"], 
+                                     index=0 if st.session_state.lang == "PL" else 1)
 
-# Skrót do aktualnego języka
 T = LANGUAGES[st.session_state.lang]
 
-def generate_valuation_pdf(username, city, district, area, rooms, price_est):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", 'B', 20)
-    pdf.set_text_color(41, 128, 185) 
-    pdf.cell(0, 20, T["pdf_title"], ln=True, align='C')
-    
-    pdf.set_font("Arial", size=10)
-    pdf.set_text_color(0, 0, 0)
-    pdf.cell(0, 10, f"Date: {datetime.now().strftime('%d.%m.%Y %H:%M')}", ln=True, align='C')
-    pdf.ln(10)
-    
-    pdf.set_font("Arial", 'B', 14)
-    pdf.cell(0, 10, T["pdf_params"], ln=True)
-    pdf.set_font("Arial", size=12)
-    pdf.cell(0, 10, f"- {T['city_label']}: {city}", ln=True)
-    pdf.cell(0, 10, f"- {T['dist_label']}: {district}", ln=True)
-    pdf.cell(0, 10, f"- {T['area_label']}: {area}", ln=True)
-    pdf.ln(10)
-    
-    pdf.set_fill_color(235, 245, 251)
-    pdf.set_font("Arial", 'B', 16)
-    pdf.cell(0, 20, f"VALUE: {int(price_est):,} PLN".replace(',', ' '), border=1, ln=True, align='C', fill=True)
-    return pdf.output(dest='S').encode('latin-1')
+# --- 3. FUNKCJA GŁÓWNA ---
 
 def main():
+    # Import wykresów wewnątrz funkcji (uniknięcie Circular Import)
+    from src.analysis.charts import show_price_prediction_logic
+    
     st.title(T["title"])
     
     db = get_db()
@@ -170,6 +323,7 @@ def main():
     st.divider()
     st.subheader(T["calc_header"])
 
+    # Kontener formularza wyceny
     with st.container():
         col1, col2 = st.columns(2)
         with col1:
@@ -181,19 +335,20 @@ def main():
             in_rooms = st.slider(T["rooms_label"], 1, 10, 2)
 
         if st.button(T["calc_btn"], use_container_width=True):
-            subset = df[(df['city'] == in_city) & (df['district'] == in_dist)]
-            if subset.empty: subset = df[df['city'] == in_city]
-            price_est = subset['price_per_m2'].mean() * in_area
+            subset = df[(df['city'] == in_city) & (df['district'] == in_dist)].copy()
+            if subset.empty: 
+                subset = df[df['city'] == in_city].copy()
+            
+            avg_m2 = subset['price_per_m2'].mean()
+            price_est = (avg_m2 if pd.notna(avg_m2) else 0) * in_area
 
             st.session_state.last_valuation = {
                 "city": in_city, "district": in_dist, "area": in_area, "rooms": in_rooms, "price": price_est
             }
             db.update_stat(username, "valuation_requests_count")
-            db.update_stat(username, "charts_generated_count")
-            db.check_and_update_achievements(username)
             st.rerun()
 
-    # --- WYŚWIETLANIE TRWAŁEGO WYNIKU ---
+    # --- WYŚWIETLANIE WYNIKÓW ---
     if st.session_state.last_valuation:
         val = st.session_state.last_valuation
         st.divider()
@@ -202,24 +357,16 @@ def main():
             show_price_prediction_logic(df, val['area'], val['city'], val['district'])
 
         st.success(T["result_msg"].format(city=val['city'], dist=val['district'], price=f"{int(val['price']):,}"))
-        
-        col_exp1, col_exp2 = st.columns(2)
-        with col_exp1:
-            csv = pd.DataFrame([val]).to_csv(index=False).encode('utf-8-sig')
-            st.download_button(T["download_csv"], data=csv, file_name="valuation.csv", use_container_width=True)
-        with col_exp2:
-            pdf_bytes = generate_valuation_pdf(username, val['city'], val['district'], val['area'], val['rooms'], val['price'])
-            st.download_button(T["download_pdf"], data=pdf_bytes, file_name="valuation.pdf", use_container_width=True)
 
-    # --- STATYSTYKI NA DOLE ---
+    # --- STATYSTYKI DOLNE ---
     st.divider()
     with st.expander(T["stats_header"]):
         stats_df = df[df["city"] == in_city]
         if in_dist: stats_df = stats_df[stats_df["district"] == in_dist]
         if not stats_df.empty:
             c1, c2 = st.columns(2)
-            c1.metric(T["avg_m2"], f"{round(stats_df['price_per_m2'].mean(), 2)} zł")
-            c2.metric(T["median_m2"], f"{round(stats_df['price_per_m2'].median(), 2)} zł")
+            c1.metric(T["avg_m2"], f"{round(stats_df['price_per_m2'].mean(), 0)} zł")
+            c2.metric(T["median_m2"], f"{round(stats_df['price_per_m2'].median(), 0)} zł")
 
 if __name__ == "__main__":
     main()

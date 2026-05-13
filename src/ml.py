@@ -7,6 +7,7 @@ from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 import joblib
 import os
+from src.lang import get_text
 
 class PricePredictor:
     def __init__(self):
@@ -15,20 +16,38 @@ class PricePredictor:
 
     def train(self, df):
         """Trenuje model na podstawie danych z bazy."""
-        if df.empty or len(df) < 10:
-            return False, "Zbyt mało danych do trenowania (min. 10 ofert)."
+        from src.lang import get_text
+        T = get_text()
+        
+        if df is None or df.empty:
+            return False, T.get("no_data", "Brak danych.")
 
-        # Przygotowanie cech
-        X = df[['area', 'rooms', 'city', 'district']]
-        y = df['price']
+        # 1. DEFINIUJEMY KOLUMNY
+        feature_cols = ['area', 'rooms', 'city', 'district']
+        target_col = 'price'
+        all_needed = feature_cols + [target_col]
 
+        # 2. CZYSZCZENIE KOMPLEKSOWE
+        # Usuwamy wiersze, które mają NaN w JAKIEJKOLWIEK z tych kolumn
+        df_clean = df.dropna(subset=all_needed)
+        
+        # Opcjonalnie: upewniamy się, że typy numeryczne są poprawne
+        df_clean[target_col] = pd.to_numeric(df_clean[target_col], errors='coerce')
+        df_clean = df_clean.dropna(subset=[target_col])
+
+        if len(df_clean) < 10:
+            return False, T.get("ml_too_little_data", "Zbyt mało danych (min. 10).")
+
+        # 3. PRZYGOTOWANIE DANYCH
+        X = df_clean[feature_cols]
+        y = df_clean[target_col]
+
+        # Reszta kodu Pipeline (bez zmian)...
         categorical_features = ['city', 'district']
         categorical_transformer = OneHotEncoder(handle_unknown='ignore')
 
         preprocessor = ColumnTransformer(
-            transformers=[
-                ('cat', categorical_transformer, categorical_features)
-            ],
+            transformers=[('cat', categorical_transformer, categorical_features)],
             remainder='passthrough'
         )
 
@@ -37,13 +56,15 @@ class PricePredictor:
             ('regressor', RandomForestRegressor(n_estimators=100, random_state=42))
         ])
 
-        self.model.fit(X, y)
-        
-        if not os.path.exists('models'):
-            os.makedirs('models')
-        joblib.dump(self.model, self.model_path)
-        
-        return True, "Model został wytrenowany pomyślnie."
+        try:
+            self.model.fit(X, y)
+            
+            if not os.path.exists('models'):
+                os.makedirs('models')
+            joblib.dump(self.model, self.model_path)
+            return True, T.get("ml_train_success", "Model wytrenowany!")
+        except Exception as e:
+            return False, f"Błąd fit: {e}"
 
     def predict(self, area, rooms, city, district):
         """Przewiduje cenę dla podanych parametrów przez ML."""

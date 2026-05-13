@@ -3,39 +3,36 @@ import pandas as pd
 import plotly.express as px
 from src.utils import get_db, clean_df
 from src.auth import check_auth
-from src.i18n import LANGUAGES
-T = LANGUAGES[st.session_state.get('lang', 'PL')]
+from src.lang import get_text # Używamy ustandaryzowanej funkcji pobierającej teksty
 
 # --- KONFIGURACJA STRONY ---
-st.set_page_config(page_title="Ranking Miast - Analiza Nieruchomości", layout="wide")
+T = get_text()
+st.set_page_config(page_title=f"{T['page_title']} - Ranking", layout="wide")
 
-# --- ZABEZPIECZENIE (Musisz być zalogowany) ---
+# --- ZABEZPIECZENIE ---
 check_auth()
 
 def main():
-    st.title("🏆 Rankingowy System Nieruchomości")
-    st.markdown("Porównaj średnie ceny mieszkań dla **TOP 6** miast w Polsce.")
+    st.title(f"🏆 {T.get('tab_cities', 'Ranking Miast')}")
+    st.markdown(T.get('comp_desc', "Porównaj średnie ceny mieszkań dla **TOP 6** miast w Polsce."))
 
     # Inicjalizacja bazy
     db = get_db()
     username = st.session_state.get('username')
 
-    # Sprawdzenie sesji (na wszelki wypadek)
     if not username:
-        st.error("Błąd sesji. Zaloguj się ponownie.")
+        st.error(T.get('error_db', "Błąd sesji. Zaloguj się ponownie."))
         st.stop()
 
-    # 1. POBIERANIE I CZYSZCZENIE DANYCH (Wszystkich ofert użytkownika)
+    # 1. POBIERANIE I CZYSZCZENIE DANYCH
     df_raw = db.get_all_offers(username)
     df = clean_df(df_raw)
 
     if df is None or df.empty:
-        st.warning(f"⚠️ Użytkownik {username} nie posiada danych w bazie. Uruchom scraper!")
+        st.warning(T["no_data"])
         return
 
     # --- KONFIGURACJA RANKINGU ---
-    # 1. Definiujemy listę miast w różnych wariantach (z polskimi znakami i bez)
-    # To rozwiąże problem, jeśli w bazie masz "Krakow" zamiast "Kraków"
     city_map = {
         "warszawa": "Warszawa",
         "kraków": "Kraków", "krakow": "Kraków",
@@ -45,45 +42,34 @@ def main():
         "łódź": "Łódź", "lodz": "Łódź"
     }
 
-    # 2. Normalizujemy kolumnę 'city' w Twoim DataFrame
     df["city_lower"] = df["city"].str.lower().str.strip()
-
-    # 3. Filtrujemy tylko te rekordy, które są w naszym słowniku
     df_ranking = df[df["city_lower"].isin(city_map.keys())].copy()
-
-    # 4. Mapujemy nazwy na ładne, oficjalne brzmienie
     df_ranking["city"] = df_ranking["city_lower"].map(city_map)
 
     if df_ranking.empty:
-        st.warning(f"⚠️ W bazie użytkownika {username} nie znaleziono ofert dla TOP 6 miast.")
-        st.info("Sprawdź czy w Twoich danych kolumna 'city' zawiera nazwy takie jak: Kraków, Wrocław, Gdańsk itd.")
+        st.warning(T["no_data"])
         return
 
-    # --- PANEL BOCZNY - FILTRY RANKINGU ---
-    st.sidebar.header("⚖️ Filtry Rankingu")
+    # --- PANEL BOCZNY - FILTRY ---
+    st.sidebar.header(f"⚖️ {T['dash_filters']}")
 
-    # Filtrowanie po Metrażu (Slider z krokiem 5m)
     min_area = int(df_ranking["area"].min())
     max_area = int(df_ranking["area"].max())
+    
     selected_area = st.sidebar.slider(
-        "Wybierz zakres metrażu (m²):", 
+        f"{T['area_label']}:", 
         min_value=10, 
-        max_value=250, # Stały zakres dla czytelności rankingu
+        max_value=250, 
         value=(min_area, max_area),
         step=5
     )
 
-    # Filtrowanie po Liczbie Pokoi
     real_rooms = sorted(df_ranking["rooms"].unique())
     selected_rooms = st.sidebar.multiselect(
-        "Liczba pokoi:", 
+        f"{T['rooms_label']}:", 
         options=real_rooms, 
         default=real_rooms
     )
-
-    # Przyciski do szybkiego wyboru (Opcjonalnie)
-    # st.sidebar.markdown("**Szybki wybór pokoi:**")
-    # if st.sidebar.button("Wszystkie"): selected_rooms = real_rooms
 
     # --- APLIKACJA FILTRÓW ---
     df_filtered = df_ranking[
@@ -93,35 +79,35 @@ def main():
     ]
 
     # --- UI: PREZENTACJA RANKINGU ---
-    st.subheader(f"📊 Porównanie Średniej Ceny za m² w TOP 6")
-    
+    st.subheader(f"📊 {T.get('comp_chart_avg', 'Porównanie Średniej Ceny za m²')}")
 
     if not df_filtered.empty:
-        # Obliczanie średniej dla miast
+        # Obliczanie średniej
         ranking_data = df_filtered.groupby("city").agg({
             "price_per_m2": "mean",
-            "price": "count" # Liczba ofert do hover_data
+            "price": "count" 
         }).reset_index()
 
-        # Sortowanie od najwyższej ceny
         ranking_data = ranking_data.sort_values("price_per_m2", ascending=False)
 
-        # GENEROWANIE WYKRESU PLOTLY
+        # GENEROWANIE WYKRESU
         fig = px.bar(
             ranking_data, 
             x="city", 
             y="price_per_m2",
-            color="city", # Każde miasto ma swój kolor
-            text_auto='.0f', # Wyświetlanie wartości nad słupkiem (zaokrąglone)
-            labels={"price_per_m2": "Średnia PLN/m²", "city": "Miasto"},
-            hover_data=["price"] # Dodatkowa informacja o liczbie ofert w tooltipie
+            color="city",
+            text_auto='.0f',
+            labels={
+                "price_per_m2": T.get('dash_avg_m2', "Średnia PLN/m²"), 
+                "city": T.get('dash_select_city', "Miasto")
+            },
+            hover_data=["price"]
         )
 
-        # Stylowanie wykresu
         fig.update_layout(
-            yaxis_title="Średnia cena za m² (PLN)",
-            xaxis_title="Miasto",
-            showlegend=False, # Legenda niepotrzebna, kolory są na osi X
+            yaxis_title=T.get('dash_avg_m2', "Średnia cena za m² (PLN)"),
+            xaxis_title=T.get('dash_select_city', "Miasto"),
+            showlegend=False,
             font=dict(size=14)
         )
 
@@ -130,21 +116,20 @@ def main():
         st.divider()
 
         # --- TABELA RANKINGOWA ---
-        st.subheader("📑 Tabela Rankingowa")
-        # Zmiana nazw kolumn do wyświetlenia
+        st.subheader(f"📑 {T.get('comp_table_header', 'Tabela Rankingowa')}")
+        
         ranking_display = ranking_data.rename(columns={
-            "city": "Miasto",
-            "price_per_m2": "Średnia PLN/m²",
-            "price": "Liczba Ofert"
+            "city": T.get('dash_select_city', "Miasto"),
+            "price_per_m2": T.get('dash_avg_m2', "Średnia PLN/m²"),
+            "price": T.get('metric_offers', "Liczba Ofert")
         })
         
-        # Wyświetlenie interaktywnej tabeli
         st.dataframe(ranking_display.style.format({
-            "Średnia PLN/m²": "{:.0f}"
+            T.get('dash_avg_m2', "Średnia PLN/m²"): "{:.0f}"
         }), use_container_width=True, hide_index=True)
 
     else:
-        st.info("Nie znaleziono ofert spełniających wybrane kryteria w 6 największych miastach.")
+        st.info(T["no_data"])
 
 if __name__ == "__main__":
     main()

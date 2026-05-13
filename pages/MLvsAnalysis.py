@@ -4,13 +4,13 @@ import plotly.express as px
 from src.auth import check_auth
 from src.utils import get_db, clean_df
 from src.ml import PricePredictor, get_statistical_estimate
-from src.i18n import LANGUAGES
+from src.lang import get_text 
 
-# 1. Pobranie języka i konfiguracja
-lang = st.session_state.get('lang', 'PL')
-T = LANGUAGES[lang]
+# 1. Pobranie tłumaczeń przez dedykowaną funkcję
+T = get_text()
 
-st.set_page_config(page_title=T.get("duel_page_title", "Pojedynek Wycen"), layout="wide")
+# Konfiguracja strony używa już T
+st.set_page_config(page_title=T.get("duel_page_title", "Pojedynek"), layout="wide")
 check_auth()
 
 # Nagłówki
