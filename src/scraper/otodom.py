@@ -12,6 +12,8 @@ class OtodomScraper:
         self.driver = None
         self.all_results = []
 
+    
+
     def clean_slug(self, text):
         """
         Dostosowuje nazwy do formatu Otodom (np. Praga-Północ -> praga--polnoc).
@@ -164,3 +166,12 @@ class OtodomScraper:
             self.close_driver()
 
         return pd.DataFrame(self.all_results)
+    
+    def get_driver():
+        options = Options()
+        options.add_argument("--headless") # Konieczne w chmurze!
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+        
+        return webdriver.Chrome(options=options)
