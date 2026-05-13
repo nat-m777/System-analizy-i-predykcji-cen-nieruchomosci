@@ -3,6 +3,7 @@ import os
 import time
 from datetime import datetime
 from io import BytesIO
+from src.lang import get_text
 
 # =========================================================
 # SYSTEM PATH FIX (Musi być przed jakimkolwiek importem z src)

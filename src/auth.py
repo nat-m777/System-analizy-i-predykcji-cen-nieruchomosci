@@ -11,12 +11,16 @@ from sqlalchemy import create_engine, text
 # DATABASE
 # =========================================================
 
-DB_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+psycopg2://admin:password@db:5432/real_estate"
-)
+import os
 
-engine = create_engine(DB_URL)
+# Usuwamy domyślny adres "db:5432", bo on działa tylko w Twoim Dockerze
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    # To pomoże Ci w logach sprawdzić, czy Streamlit w ogóle widzi Twoje Secrets
+    raise ValueError("BŁĄD: DATABASE_URL nie została znaleziona w Secrets!")
+
+engine = create_engine(DATABASE_URL)
 
 # =========================================================
 # COOKIE MANAGER
