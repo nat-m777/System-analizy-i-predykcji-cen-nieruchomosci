@@ -6,15 +6,15 @@ import plotly.express as px
 
 # 1. NAPRAWA ŚCIEŻEK (Zawsze na górze)
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from src.utils import get_db, clean_df
+from src.utils.database import get_db
+from src.utils.data import clean_df
 from src.auth import check_auth
-from src.i18n import LANGUAGES
+
+from src.lang import get_text
+T = get_text()
 
 # 2. ZABEZPIECZENIE I JĘZYK
 check_auth()
-lang = st.session_state.get('lang', 'PL')
-T = LANGUAGES[lang]
 
 # 3. KONFIGURACJA STRONY (Zawsze przed jakimkolwiek rysowaniem UI)
 st.set_page_config(page_title=T.get("nav_comparision", "Porównanie Miast"), layout="wide")

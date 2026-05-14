@@ -1,15 +1,15 @@
 import streamlit as st
 import pandas as pd
-import unicodedata
-from datetime import datetime
-from fpdf import FPDF
-from src.utils import get_db, clean_df
+from src.utils.database import get_db
+from src.utils.data import clean_df
+from src.utils.export import generate_valuation_pdf
 from src.auth import check_auth
-from src.lang import get_text # Pobieramy centralną funkcję tłumaczeń
+from src.lang import get_text
+from src.utils.export import generate_valuation_pdf, prepare_csv
 
 # 1. KONFIGURACJA I ZABEZPIECZENIE
 check_auth()
-T = get_text() # Pobranie aktualnego słownika (PL lub EN)
+T = get_text()  # Pobranie słownika z plików JSON (src/i18n/)
 
 st.set_page_config(page_title=T["page_title"], layout="wide")
 
@@ -17,55 +17,13 @@ st.set_page_config(page_title=T["page_title"], layout="wide")
 if 'last_valuation' not in st.session_state:
     st.session_state.last_valuation = None
 
-# --- LOGIKA GENEROWANIA PDF (Lokalnie w pliku) ---
-def safe_text(text):
-    """Usuwa polskie znaki dla standardowej czcionki FPDF."""
-    if not text or pd.isna(text): return "N/A"
-    return "".join(c for c in unicodedata.normalize('NFKD', str(text)) if not unicodedata.combining(c)).replace('ł', 'l').replace('Ł', 'L')
-
-def generate_valuation_pdf(username, city, district, area, rooms, price_est):
-    try:
-        pdf = FPDF()
-        pdf.add_page()
-        
-        # Nagłówek
-        pdf.set_font("Arial", 'B', 20)
-        pdf.set_text_color(41, 128, 185) 
-        pdf.cell(0, 20, safe_text(T["pdf_title"]), ln=True, align='C')
-        
-        # Data i Metadane
-        pdf.set_font("Arial", size=10)
-        pdf.set_text_color(0, 0, 0)
-        pdf.cell(0, 10, f"{safe_text(T['pdf_date'])}: {datetime.now().strftime('%d.%m.%Y %H:%M')}", ln=True, align='C')
-        pdf.ln(10)
-        
-        # Parametry
-        pdf.set_font("Arial", 'B', 14)
-        pdf.cell(0, 10, safe_text(T["pdf_params"]), ln=True)
-        pdf.set_font("Arial", size=12)
-        pdf.cell(0, 10, f"- {safe_text(T['city_label'])}: {safe_text(city)}", ln=True)
-        pdf.cell(0, 10, f"- {safe_text(T['dist_label'])}: {safe_text(district)}", ln=True)
-        pdf.cell(0, 10, f"- {safe_text(T['area_label'])}: {area} m2", ln=True)
-        pdf.cell(0, 10, f"- {safe_text(T['rooms_label'])}: {rooms}", ln=True)
-        pdf.ln(10)
-        
-        # Wartość końcowa
-        pdf.set_fill_color(235, 245, 251)
-        pdf.set_font("Arial", 'B', 16)
-        val_str = f"{T['pdf_value']}: {int(price_est):,} PLN".replace(',', ' ')
-        pdf.cell(0, 20, safe_text(val_str), border=1, ln=True, align='C', fill=True)
-        
-        return pdf.output(dest='S').encode('latin-1')
-    except Exception as e:
-        st.error(f"{T['error_pdf']}: {e}")
-        return None
-
 def main():
-    # Import lokalny dla uniknięcia pętli importów (circular import)
+    # Import lokalny dla uniknięcia circular import
     from src.analysis.charts import show_price_prediction_logic
     
     st.title(T["title"])
     
+    # Pobieranie i czyszczenie danych
     db = get_db()
     username = st.session_state.get('username')
     df_raw = db.get_all_offers(username) 
@@ -90,6 +48,7 @@ def main():
             in_rooms = st.slider(T["rooms_label"], 1, 10, 2)
 
         if st.button(T["calc_btn"], use_container_width=True):
+            # Prosta logika wyceny statystycznej
             subset = df[(df['city'] == in_city) & (df['district'] == in_dist)].copy()
             if subset.empty: 
                 subset = df[df['city'] == in_city].copy()
@@ -97,41 +56,83 @@ def main():
             avg_m2 = subset['price_per_m2'].mean()
             price_est = (avg_m2 if pd.notna(avg_m2) else 0) * in_area
 
+            # Zapisanie wyniku do sesji
             st.session_state.last_valuation = {
-                "city": in_city, "district": in_dist, "area": in_area, "rooms": in_rooms, "price": price_est
+                "city": in_city, 
+                "district": in_dist, 
+                "area": in_area, 
+                "rooms": in_rooms, 
+                "price": price_est,
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M")
             }
+            
+            # Statystyki użycia w bazie
             db.update_stat(username, "valuation_requests_count")
             st.rerun()
 
-    # --- SEKCYJNY WYNIK I EKSPORT ---
+    # --- SEKCJA WYNIKÓW I EKSPORTU ---
     if st.session_state.last_valuation:
         val = st.session_state.last_valuation
         st.divider()
         
+        # Wykresy (logika z charts.py)
         with st.expander(T["chart_expander"], expanded=True):
             show_price_prediction_logic(df, val['area'], val['city'], val['district'])
 
-        st.success(T["result_msg"].format(city=val['city'], dist=val['district'], price=f"{int(val['price']):,}"))
+        # Komunikat o sukcesie z wyceną
+        formatted_price = f"{int(val['price']):,}".replace(',', ' ')
+        st.success(T["result_msg"].format(city=val['city'], dist=val['district'], price=formatted_price))
         
-        st.write(f"### 💾 {T.get('export_header', 'Eksport')}")
+        # --- PANEL EKSPORTU ---
+        st.write(f"### 💾 {T.get('export_header', 'Eksport danych')}")
         col_exp1, col_exp2 = st.columns(2)
+        
         with col_exp1:
-            csv = pd.DataFrame([val]).to_csv(index=False).encode('utf-8-sig')
-            st.download_button(T["download_csv"], data=csv, file_name="valuation.csv", use_container_width=True)
+            # Eksport do CSV (używając nowej funkcji z export.py)
+            csv_bytes = prepare_csv(val)
+            st.download_button(
+                label=T["download_csv"],
+                data=csv_bytes,
+                file_name=f"wycena_{val['city']}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+            
         with col_exp2:
-            pdf_bytes = generate_valuation_pdf(username, val['city'], val['district'], val['area'], val['rooms'], val['price'])
+            # Przygotowanie parametrów do PDF i generowanie
+            pdf_params = {
+                T["city_label"]: val['city'],
+                T["dist_label"]: val['district'],
+                T["area_label"]: f"{val['area']} m²",
+                T["rooms_label"]: val['rooms']
+            }
+            
+            pdf_bytes = generate_valuation_pdf(pdf_params, val['price'], T)
+            
             if pdf_bytes:
-                st.download_button(T["download_pdf"], data=pdf_bytes, file_name="valuation.pdf", use_container_width=True)
+                st.download_button(
+                    label=T["download_pdf"],
+                    data=pdf_bytes,
+                    file_name=f"certyfikat_{val['city']}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
 
-    # --- STATYSTYKI DODATKOWE ---
+    # --- DODATKOWE STATYSTYKI LOKALIZACJI ---
     st.divider()
     with st.expander(T["stats_header"]):
         stats_df = df[df["city"] == in_city]
-        if in_dist: stats_df = stats_df[stats_df["district"] == in_dist]
+        if in_dist: 
+            stats_df = stats_df[stats_df["district"] == in_dist]
+            
         if not stats_df.empty:
-            c1, c2 = st.columns(2)
+            c1, c2, c3 = st.columns(3)
             c1.metric(T["avg_m2"], f"{round(stats_df['price_per_m2'].mean(), 0)} zł")
             c2.metric(T["median_m2"], f"{round(stats_df['price_per_m2'].median(), 0)} zł")
+            c3.metric(T["metric_offers"], len(stats_df))
+        else:
+            st.info(T["no_data"])
 
 if __name__ == "__main__":
+    from datetime import datetime # Import potrzebny do timestampa
     main()

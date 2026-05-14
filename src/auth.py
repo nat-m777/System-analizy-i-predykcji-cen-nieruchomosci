@@ -188,24 +188,23 @@ def login_session(username):
 # =========================================================
 
 def logout_session():
-
+    # 1. Pobieramy menedżera ciasteczek
     cookie_manager = get_cookie_manager()
 
+    # 2. Usuwamy ciasteczko logowania
     cookie_manager.delete(
         "real_estate_user",
         key="delete_cookie"
     )
 
-    keys = [
-        "logged_in",
-        "username",
-        "auth_checked"
-    ]
+    # 3. CZYŚCIMY CAŁY st.session_state
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
 
-    for k in keys:
-
-        if k in st.session_state:
-            del st.session_state[k]
+    # 4. Ustawiamy stan początkowy (na wszelki wypadek)
+    st.session_state["logged_in"] = False
+    st.session_state["auth_checked"] = True
+    
 
 # =========================================================
 # CHECK AUTH
