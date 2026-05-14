@@ -4,17 +4,24 @@ import pandas as pd
 import streamlit as st
 
 class DBManager:
+    """
+    Manager bazy danych obsługujący połączenie z PostgreSQL.
+    Zarządza schematem tabel, operacjami CRUD na ofertach nieruchomości
+    oraz systemem statystyk i osiągnięć użytkowników.
+    """
     def __init__(self):
+        # Pobieranie URL bazy danych ze zmiennych środowiskowych (bezpieczeństwo)
         self.url = os.getenv("DATABASE_URL", "postgresql+psycopg2://admin:password@127.0.0.1:5432/real_estate")
+        # Inicjalizacja silnika SQLAlchemy
         self.engine = create_engine(self.url)
-        # Automatycznie dbamy o strukturę przy starcie
+        # Automatyczne przygotowanie struktury bazy przy starcie aplikacji
         self.create_tables()
         self.fix_schema()
 
     def create_tables(self):
+        """Tworzy strukturę tabel, jeśli jeszcze nie istnieją w bazie danych."""
         with self.engine.begin() as conn:
-            # 1. Tabela USERS (Zgodnie z Twoim opisem)
-            # UWAGA: Dodałem PRIMARY KEY na username, aby móc robić relacje
+            # 1. Tabela USERS - Przechowuje poświadczenia użytkowników
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS users (
                     username TEXT PRIMARY KEY,
@@ -22,7 +29,7 @@ class DBManager:
                 );
             """))
 
-            # 2. Tabela OFFERS 
+            # 2. Tabela OFFERS - Główny magazyn ofert nieruchomości zebranych przez scraper
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS offers (
                     id SERIAL PRIMARY KEY,
@@ -42,7 +49,7 @@ class DBManager:
                 );
             """))
 
-            # 3. Tabela SEARCH_HISTORY 
+            # 3. Tabela SEARCH_HISTORY - Rejestruje filtry wyszukiwania używane przez użytkowników
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS search_history (
                     id SERIAL PRIMARY KEY,
@@ -53,8 +60,7 @@ class DBManager:
                 );
             """))
 
-            # 4. Tabela ACHIEVEMENTS
-            # Powiązana przez username, z unikalnością pary (użytkownik, nazwa osiągnięcia)
+            # 4. Tabela ACHIEVEMENTS - Przechowuje odblokowane "medale" użytkowników
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS achievements (
                     id SERIAL PRIMARY KEY,
@@ -64,7 +70,8 @@ class DBManager:
                     UNIQUE(username, achievement_name)
                 );
             """))
-            # 5. tabela do statystyk uzytkownika przy odblokowywaniu achievementow
+
+            # 5. Tabela USER_STATS - Liczniki aktywności służące do wyliczania osiągnięć
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS user_stats (
                     username TEXT PRIMARY KEY REFERENCES users(username) ON DELETE CASCADE,
@@ -76,25 +83,29 @@ class DBManager:
             """))
 
     def fix_schema(self):
-        """Dodaje brakujące kolumny, jeśli baza została utworzona wcześniej."""
+        """Metoda migracyjna - dodaje brakujące kolumny w przypadku aktualizacji bazy."""
         with self.engine.begin() as conn:
-            # Dodajemy username jeśli go nie ma (jako alias dla owner lub dodatkowe info)
             conn.execute(text("ALTER TABLE offers ADD COLUMN IF NOT EXISTS username TEXT;"))
             conn.execute(text("ALTER TABLE offers ADD COLUMN IF NOT EXISTS owner TEXT;"))
 
     def insert_offers(self, df, username):
+        """
+        Czyści dane w DataFrame i masowo zapisuje je do tabeli offers.
+        
+        Args:
+            df (pd.DataFrame): Surowe dane ze scrapera.
+            username (str): Login użytkownika dodającego dane.
+        """
         if df is None or df.empty:
             print("EMPTY DF - SKIP INSERT")
             return
 
-        # Czyścimy dane i przypisujemy użytkownika
-        df = df.copy() # Pracujemy na kopii, by nie psuć oryginału w Streamlit
+        # Przypisanie własności do importowanych rekordów
+        df = df.copy() 
         df['owner'] = username
-        df['username'] = username # Na wszelki wypadek wypełniamy obie kolumny
+        df['username'] = username
 
-        # =====================================
-        # CLEAN TYPES
-        # =====================================
+        # Konwersja typów danych (coerce zamienia błędy na NaN/None)
         numeric_cols = ["price", "area", "rooms", "price_per_m2"]
         for col in numeric_cols:
             if col in df.columns:
@@ -103,18 +114,17 @@ class DBManager:
         if "scrape_date" in df.columns:
             df["scrape_date"] = pd.to_datetime(df["scrape_date"], errors="coerce")
 
-        # Filtrujemy tylko te kolumny, które faktycznie chcemy w bazie
-        # (Zapobiega to błędom, gdy w DF są jakieś tymczasowe kolumny ze scrapera)
+        # Mapowanie kolumn z DataFrame na schemat tabeli SQL
         valid_columns = [
             "title", "city", "district", "subdistrict", "price", "area", 
             "rooms", "price_per_m2", "url", "source", "scrape_date", "owner", "username"
         ]
         
-        # Zostawiamy tylko te kolumny, które istnieją w DF i są na liście valid_columns
         cols_to_save = [c for c in valid_columns if c in df.columns]
         df_to_save = df[cols_to_save].where(pd.notnull(df), None)
 
         try:
+            # Wykorzystanie pandas to_sql z metodą 'multi' dla zwiększenia wydajności zapisu
             df_to_save.to_sql(
                 "offers",
                 self.engine,
@@ -128,7 +138,7 @@ class DBManager:
             raise e
 
     def get_all_offers(self, username=None):
-        """Pobiera oferty. Jeśli podano username, filtruje tylko dla tego użytkownika."""
+        """Pobiera oferty z bazy. Filtruje wyniki, jeśli podano konkretnego użytkownika."""
         if username:
             query = text("SELECT * FROM offers WHERE owner = :u OR username = :u ORDER BY scrape_date DESC")
             return pd.read_sql(query, self.engine, params={"u": username})
@@ -137,12 +147,14 @@ class DBManager:
         return pd.read_sql(query, self.engine)
 
     def clear_all_data(self):
+        """Usuwa wszystkie oferty z tabeli offers i resetuje licznik ID."""
         query = text("TRUNCATE TABLE offers RESTART IDENTITY")
         with self.engine.begin() as conn:
             conn.execute(query)
         return True
-    # Poprawione: używamy username zamiast user_id
+
     def unlock_achievement(self, username, achievement_name):
+        """Przyznaje osiągnięcie użytkownikowi, ignorując powtórzenia (ON CONFLICT)."""
         query = text("""
             INSERT INTO achievements (username, achievement_name) 
             VALUES (:u, :name) 
@@ -152,19 +164,19 @@ class DBManager:
             conn.execute(query, {"u": username, "name": achievement_name})
 
     def get_user_achievements(self, username):
+        """Zwraca listę nazw wszystkich osiągnięć zdobytych przez użytkownika."""
         query = text("SELECT achievement_name FROM achievements WHERE username = :u")
         with self.engine.connect() as conn:
             result = conn.execute(query, {"u": username}).fetchall()
             return [r[0] for r in result]
 
-    # NOWA METODA: Aktualizacja statystyk w bazie
     def update_stat(self, username, column_name, value=1, increment=True):
         """
-        Aktualizuje licznik w bazie. 
-        Jeśli increment=True, dodaje 'value' do obecnej wartości.
-        Jeśli increment=False, ustawia wartość na sztywno (np. dla liczby miast).
+        Aktualizuje statystyki aktywności użytkownika. Obsługuje inkrementację (np. liczniki)
+        oraz ustawianie sztywnych wartości (np. liczba unikalnych miast).
         """
         if increment:
+            # UPSERT: Dodaje wartość do istniejącego licznika
             query = text(f"""
                 INSERT INTO user_stats (username, {column_name}) 
                 VALUES (:u, :v) 
@@ -172,6 +184,7 @@ class DBManager:
                 DO UPDATE SET {column_name} = user_stats.{column_name} + :v, last_updated = CURRENT_TIMESTAMP
             """)
         else:
+            # UPSERT: Nadpisuje istniejącą wartość
             query = text(f"""
                 INSERT INTO user_stats (username, {column_name}) 
                 VALUES (:u, :v) 
@@ -181,9 +194,13 @@ class DBManager:
             
         with self.engine.begin() as conn:
             conn.execute(query, {"u": username, "v": value})
+
     def check_and_update_achievements(self, username):
-        """Logika sprawdzania i przyznawania osiągnięć po stronie managera bazy."""
-        # 1. Pobierz aktualne statystyki
+        """
+        Sprawdza progi statystyk i przyznaje nowe osiągnięcia.
+        Zwraca listę nowo odblokowanych medali do wyświetlenia powiadomień w UI.
+        """
+        # 1. Pobranie bieżących liczników użytkownika
         query = text("SELECT cities_viewed_count, charts_generated_count, valuation_requests_count FROM user_stats WHERE username = :u")
         with self.engine.connect() as conn:
             res = conn.execute(query, {"u": username}).fetchone()
@@ -195,7 +212,7 @@ class DBManager:
         unlocked = self.get_user_achievements(username)
         newly_unlocked = []
 
-        # Definicja progów i nazw
+        # Mapa warunków: (Nazwa osiągnięcia, Warunek logiczny)
         achievements_to_check = [
             ("Badacz rynku", s_cities >= 3),
             ("Eksplorator danych", s_charts >= 10),
@@ -204,9 +221,10 @@ class DBManager:
             ("Ekspert wyceny", s_valuations >= 25)
         ]
 
+        # Weryfikacja i zapis nowych osiągnięć
         for name, condition in achievements_to_check:
             if condition and name not in unlocked:
                 self.unlock_achievement(username, name)
                 newly_unlocked.append(name)
                 
-        return newly_unlocked # Zwracamy listę nowych medali, by wyświetlić toast w UI
+        return newly_unlocked

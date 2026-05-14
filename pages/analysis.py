@@ -7,28 +7,38 @@ from src.auth import check_auth
 from src.lang import get_text
 from src.utils.export import generate_valuation_pdf, prepare_csv
 
-# 1. KONFIGURACJA I ZABEZPIECZENIE
+# --- 1. KONFIGURACJA I ZABEZPIECZENIE ---
+# Weryfikacja sesji użytkownika (czy jest zalogowany)
 check_auth()
-T = get_text()  # Pobranie słownika z plików JSON (src/i18n/)
 
+# Pobranie tekstów interfejsu (i18n) na podstawie wybranego języka
+T = get_text()
+
+# Konfiguracja metadanych strony - musi być wywołana przed innymi elementami UI
 st.set_page_config(page_title=T["page_title"], layout="wide")
 
 # --- INICJALIZACJA STANU SESJI ---
+# Zapobiega utracie wyników ostatniej wyceny po odświeżeniu interfejsu (rerun)
 if 'last_valuation' not in st.session_state:
     st.session_state.last_valuation = None
 
 def main():
-    # Import lokalny dla uniknięcia circular import
+    """
+    Główna funkcja modułu wyceny.
+    Obsługuje formularz wejściowy, obliczenia statystyczne oraz sekcję eksportu wyników.
+    """
+    # Import lokalny zapobiega problemom z zapętleniem importów (circular imports)
     from src.analysis.charts import show_price_prediction_logic
     
     st.title(T["title"])
     
-    # Pobieranie i czyszczenie danych
+    # Inicjalizacja połączenia z bazą i pobranie ofert przypisanych do użytkownika
     db = get_db()
     username = st.session_state.get('username')
     df_raw = db.get_all_offers(username) 
-    df = clean_df(df_raw)
+    df = clean_df(df_raw) # Oczyszczenie danych z duplikatów i błędnych wartości
 
+    # Blokada modułu w przypadku braku danych źródłowych
     if df is None or df.empty:
         st.warning(T["no_data"])
         return
@@ -37,26 +47,33 @@ def main():
     st.subheader(T["calc_header"])
 
     # --- FORMULARZ WYCENY ---
+    # Kontener grupujący pola wejściowe dla lepszej organizacji wizualnej
     with st.container():
         col1, col2 = st.columns(2)
         with col1:
+            # Dynamiczne listy miast pobierane bezpośrednio z dostępnych ofert
             in_city = st.selectbox(T["city_label"], options=sorted(df["city"].unique()), key="city_select")
             in_area = st.number_input(T["area_label"], min_value=10, max_value=500, value=50)
         with col2:
+            # Dynamiczne filtrowanie dzielnic na podstawie wybranego miasta
             available_districts = sorted(df[df["city"] == in_city]["district"].unique())
             in_dist = st.selectbox(T["dist_label"], options=available_districts, key="dist_select")
             in_rooms = st.slider(T["rooms_label"], 1, 10, 2)
 
         if st.button(T["calc_btn"], use_container_width=True):
-            # Prosta logika wyceny statystycznej
+            # --- LOGIKA WYCENY STATYSTYCZNEJ ---
+            # 1. Filtrujemy bazę do konkretnej dzielnicy
             subset = df[(df['city'] == in_city) & (df['district'] == in_dist)].copy()
+            
+            # 2. Fallback: Jeśli dzielnica ma za mało danych, bierzemy średnią z całego miasta
             if subset.empty: 
                 subset = df[df['city'] == in_city].copy()
             
+            # 3. Obliczenie estymowanej ceny na podstawie średniej ceny za m2
             avg_m2 = subset['price_per_m2'].mean()
             price_est = (avg_m2 if pd.notna(avg_m2) else 0) * in_area
 
-            # Zapisanie wyniku do sesji
+            # Zapisanie parametrów i wyniku do session_state, aby przetrwały interakcję
             st.session_state.last_valuation = {
                 "city": in_city, 
                 "district": in_dist, 
@@ -66,20 +83,21 @@ def main():
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M")
             }
             
-            # Statystyki użycia w bazie
+            # Rejestracja aktywności w systemie analitycznym bazy danych
             db.update_stat(username, "valuation_requests_count")
             st.rerun()
 
     # --- SEKCJA WYNIKÓW I EKSPORTU ---
+    # Wyświetlana tylko wtedy, gdy w tej sesji wykonano już co najmniej jedną kalkulację
     if st.session_state.last_valuation:
         val = st.session_state.last_valuation
         st.divider()
         
-        # Wykresy (logika z charts.py)
+        # Sekcja wizualizacji: Wykresy kontekstowe (rozkład cen w okolicy)
         with st.expander(T["chart_expander"], expanded=True):
             show_price_prediction_logic(df, val['area'], val['city'], val['district'])
 
-        # Komunikat o sukcesie z wyceną
+        # Prezentacja wyniku głównego w sformatowanej formie (np. 500 000 zł)
         formatted_price = f"{int(val['price']):,}".replace(',', ' ')
         st.success(T["result_msg"].format(city=val['city'], dist=val['district'], price=formatted_price))
         
@@ -88,7 +106,7 @@ def main():
         col_exp1, col_exp2 = st.columns(2)
         
         with col_exp1:
-            # Eksport do CSV (używając nowej funkcji z export.py)
+            # Generowanie surowych danych CSV dla arkuszy kalkulacyjnych
             csv_bytes = prepare_csv(val)
             st.download_button(
                 label=T["download_csv"],
@@ -99,7 +117,8 @@ def main():
             )
             
         with col_exp2:
-            # Przygotowanie parametrów do PDF i generowanie
+            # Generowanie profesjonalnego raportu PDF (certyfikatu wyceny)
+            # Mapowanie parametrów na etykiety językowe przed wysłaniem do generatora
             pdf_params = {
                 T["city_label"]: val['city'],
                 T["dist_label"]: val['district'],
@@ -119,6 +138,7 @@ def main():
                 )
 
     # --- DODATKOWE STATYSTYKI LOKALIZACJI ---
+    # Sekcja dla analityków - pokazuje surowe średnie i mediany dla wybranego regionu
     st.divider()
     with st.expander(T["stats_header"]):
         stats_df = df[df["city"] == in_city]
@@ -134,5 +154,6 @@ def main():
             st.info(T["no_data"])
 
 if __name__ == "__main__":
-    from datetime import datetime # Import potrzebny do timestampa
+    # Import datetime wewnątrz bloku name, aby uniknąć błędów przy ładowaniu skryptu jako moduł
+    from datetime import datetime 
     main()

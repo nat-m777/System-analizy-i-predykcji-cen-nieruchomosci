@@ -8,18 +8,22 @@ import os
 import re
 
 class OtodomScraper:
+    """
+    Zaawansowany scraper portalu Otodom wykorzystujący Selenium.
+    Wykorzystuje mechanizm wstrzykiwania skryptów JS do wyciągania danych 
+    bezpośrednio z obiektu __NEXT_DATA__ (JSON), co jest szybsze i stabilniejsze niż parsowanie HTML.
+    """
     def __init__(self):
         self.driver = None
         self.all_results = []
 
-    
-
     def clean_slug(self, text):
         """
-        Dostosowuje nazwy do formatu Otodom (np. Praga-Północ -> praga--polnoc).
+        Dostosowuje nazwy miast i dzielnic do specyficznego formatu URL Otodom.
+        Obsługuje polskie znaki oraz unikalną logikę podwójnego myślnika (np. Praga-Północ -> praga--polnoc).
         """
         text = text.lower().strip()
-        # Mapa polskich znaków
+        # Mapa transliteracji polskich znaków diakrytycznych
         chars = {
             'ą': 'a', 'ć': 'c', 'ę': 'e', 'ł': 'l', 'ń': 'n', 
             'ó': 'o', 'ś': 's', 'ź': 'z', 'ż': 'z'
@@ -27,27 +31,32 @@ class OtodomScraper:
         for pol, lat in chars.items():
             text = text.replace(pol, lat)
         
-        # Logika podwójnego myślnika dla Otodom
+        # Specyfika Otodom: dzielnice z myślnikiem często wymagają podwójnego separatora w URL
         if '-' in text:
             text = text.replace('-', '--')
         
-        # Zamiana spacji na myślniki (dla dzielnic typu 'Stare Miasto')
+        # Zamiana spacji na myślniki (dzielnice wieloczłonowe)
         text = text.replace(' ', '-')
         
-        # Usuwanie znaków specjalnych
+        # Usuwanie wszelkich znaków poza alfanumerycznymi i myślnikiem
         text = re.sub(r'[^a-z0-9\-]', '', text)
         return text
 
     def start_driver(self):
-        """Inicjalizuje przeglądarkę w trybie headless."""
+        """
+        Konfiguruje i uruchamia przeglądarkę Chrome w trybie 'headless'.
+        Zawiera optymalizacje pod kątem omijania prostych systemów anty-botowych (AutomationControlled).
+        """
         if self.driver: return
         options = Options()
-        options.add_argument("--headless=new")
+        options.add_argument("--headless=new") # Tryb bez okna (wymagany na serwerach)
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-blink-features=AutomationControlled")
+        # Maskowanie user-agent, by symulować realną przeglądarkę
         options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
 
+        # Ścieżki do plików binarnych (obsługa środowisk Docker/Linux)
         chrome_bin = os.getenv("CHROME_BIN", "/usr/bin/chromium")
         driver_path = os.getenv("CHROMEDRIVER_PATH", "/usr/bin/chromedriver")
         
@@ -57,11 +66,11 @@ class OtodomScraper:
             service = Service(driver_path)
             self.driver = webdriver.Chrome(service=service, options=options)
         except Exception as e:
-            # Fallback dla środowisk lokalnych
+            # Fallback: próba uruchomienia z domyślnych ścieżek systemowych (np. Windows)
             self.driver = webdriver.Chrome(options=options)
 
     def close_driver(self):
-        """Metoda, której brakowało – bezpiecznie zamyka sesję Selenium."""
+        """Zwalnia zasoby systemowe poprzez poprawne zamknięcie sesji przeglądarki."""
         if self.driver:
             try:
                 self.driver.quit()
@@ -70,19 +79,25 @@ class OtodomScraper:
             self.driver = None
 
     def scrape_page(self, url, page):
-        """Pobiera dane JSON z konkretnej strony wyników."""
+        """
+        Ładuje stronę i wyciąga z niej dane zawarte w ukrytym obiekcie JSON (__NEXT_DATA__).
+        Jest to najbardziej odporna na zmiany wyglądu strony metoda ekstrakcji.
+        """
         full_url = f"{url}?page={page}"
         print(f"🔍 Scrapowanie: {full_url}")
         
         try:
             self.driver.get(full_url)
-            time.sleep(4) 
+            time.sleep(4) # Czekamy na wyrenderowanie skryptów przez Reacta
+            
+            # Pobieranie danych bezpośrednio z pamięci przeglądarki (JSON)
             data = self.driver.execute_script("return window.__NEXT_DATA__")
             
+            # Nawigacja po strukturze JSON portalu Otodom
             props = data.get("props", {}).get("pageProps", {})
             items = props.get("data", {}).get("searchAds", {}).get("items", [])
             
-            # Rezerwowa ścieżka w JSONie
+            # Fallback: obsługa alternatywnej struktury drzewa obiektów
             if not items:
                 items = props.get("searchAds", {}).get("items", [])
                 
@@ -92,7 +107,10 @@ class OtodomScraper:
             return []
 
     def parse_offers(self, offers, city, district):
-        """Wyciąga potrzebne informacje z surowego JSONa."""
+        """
+        Mapuje surowy słownik z JSONa na ustandaryzowaną strukturę danych aplikacji.
+        Przeprowadza czyszczenie typów (string -> float) i mapowanie pokoi.
+        """
         room_map = {"ONE": 1, "TWO": 2, "THREE": 3, "FOUR": 4, "FIVE": 5}
         for offer in offers:
             try:
@@ -100,6 +118,7 @@ class OtodomScraper:
                 area = offer.get("areaInSquareMeters")
                 rooms = offer.get("roomsNumber")
                 
+                # Konwersja formatu tekstowego (ONE, TWO...) na liczbowy
                 if isinstance(rooms, str):
                     rooms = room_map.get(rooms.upper(), rooms)
 
@@ -114,12 +133,17 @@ class OtodomScraper:
                     "scrape_date": pd.Timestamp.now()
                 })
             except:
-                continue
+                continue # Pomiń oferty z uszkodzonymi danymi
 
     def fetch_data(self, city, max_pages=2, selected_districts=None):
+        """
+        Główna pętla sterująca procesem zbierania danych dla wybranych miast i dzielnic.
+        Automatycznie dopasowuje strukturę regionów (mazowieckie, malopolskie itd.).
+        """
         self.all_results = []
-        city_slug = self.clean_slug(city).replace('--', '-') # Miasta zawsze mają jeden myślnik
+        city_slug = self.clean_slug(city).replace('--', '-') # Miasta zawsze mają separator pojedynczy
         
+        # Słownik pomocniczy do budowy ścieżki geograficznej w URL
         city_regions = {
             "warszawa": "mazowieckie", "krakow": "malopolskie", 
             "wroclaw": "dolnoslaskie", "poznan": "wielkopolskie", 
@@ -134,25 +158,25 @@ class OtodomScraper:
 
         try:
             for district in selected_districts:
-                # 1. Przygotuj oba warianty sluga
-                slug_double = self.clean_slug(district) # np. nowe--miasto
-                slug_single = slug_double.replace('--', '-') # np. nowe-miasto
+                # Otodom bywa niekonsekwentny w slugach (czasem pojedynczy, czasem podwójny myślnik)
+                slug_double = self.clean_slug(district) 
+                slug_single = slug_double.replace('--', '-') 
                 
-                # Próbujemy obu wariantów, zaczynając od tego z Twojego przykładu (single)
                 found_for_district = False
+                # Algorytm sprawdzania obu wariantów URL w celu znalezienia poprawnego
                 for current_slug in [slug_single, slug_double]:
                     if found_for_district: break
                     
                     base_url = f"https://www.otodom.pl/pl/wyniki/sprzedaz/mieszkanie/{region}/{city_slug}/{city_slug}/{city_slug}/{current_slug}"
                     
-                    # Sprawdzamy pierwszą stronę
+                    # Weryfikacja pierwszej strony (czy slug działa?)
                     offers = self.scrape_page(base_url, 1)
                     if offers:
                         print(f"✅ Trafienie! Slug '{current_slug}' działa dla {district}")
                         self.parse_offers(offers, city, district)
                         found_for_district = True
                         
-                        # Pobieramy resztę stron jeśli potrzeba
+                        # Pobieranie kolejnych stron (paginacja)
                         for page in range(2, max_pages + 1):
                             more_offers = self.scrape_page(base_url, page)
                             if more_offers:
@@ -163,15 +187,17 @@ class OtodomScraper:
                         print(f"... slug '{current_slug}' nie zwrócił wyników, sprawdzam dalej.")
 
         finally:
+            # Kluczowe: zawsze zamykamy przeglądarkę, by nie 'wyciekał' RAM
             self.close_driver()
 
         return pd.DataFrame(self.all_results)
     
+    @staticmethod
     def get_driver():
+        """Metoda statyczna do szybkiej inicjalizacji drivera (uproszczona)."""
         options = Options()
-        options.add_argument("--headless") # Konieczne w chmurze!
+        options.add_argument("--headless")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
-        
         return webdriver.Chrome(options=options)

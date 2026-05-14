@@ -10,8 +10,10 @@ from src.lang import get_text
 # =========================================================
 # 1. KONFIGURACJA STRONY
 # =========================================================
+# Pobranie tekstów interfejsu (i18n) dla aktualnego języka sesji
 T = get_text()
 
+# Konfiguracja metadanych strony (musi być przed jakimkolwiek elementem UI)
 st.set_page_config(
     page_title=T.get("duel_page_title", "Pojedynek"), 
     layout="wide"
@@ -22,15 +24,25 @@ st.set_page_config(
 # =========================================================
 
 def get_sidebar_inputs(df):
-    """Renderuje formularz w sidebarze i zwraca parametry wyceny."""
+    """
+    Renderuje formularz w panelu bocznym (sidebar) i zbiera parametry nieruchomości.
+    
+    Args:
+        df (pd.DataFrame): Oczyszczony zbiór ofert do zasilenia list wyboru.
+        
+    Returns:
+        tuple: (miasto, dzielnica, metraż, liczba pokoi)
+    """
     with st.sidebar:
         st.header(T.get("duel_params_header", "Parametry nieruchomości"))
         
+        # Dynamiczne filtrowanie miast dostępnych w bazie
         city = st.selectbox(
             T.get("city_label", "Miasto"), 
             sorted(df['city'].unique())
         )
         
+        # Filtrowanie dzielnic na podstawie wybranego wcześniej miasta
         districts = sorted(df[df['city'] == city]['district'].unique())
         district = st.selectbox(
             T.get("dist_label", "Dzielnica"), 
@@ -50,20 +62,39 @@ def get_sidebar_inputs(df):
     return city, district, area, rooms
 
 def calculate_valuations(df, area, rooms, city, district):
-    """Przeprowadza wycenę obiema metodami."""
+    """
+    Uruchamia dwa niezależne silniki wyceny: ML oraz Statystyczny.
+    
+    Args:
+        df (pd.DataFrame): Dane historyczne dla estymaty statystycznej.
+        area (float): Metraż.
+        rooms (int): Liczba pokoi.
+        city (str): Nazwa miasta.
+        district (str): Nazwa dzielnicy.
+        
+    Returns:
+        tuple: (wycena_ml, wycena_statystyczna)
+    """
+    # Podejście 1: Model Machine Learning (np. Random Forest)
     predictor = PricePredictor()
     ml_price = predictor.predict(area, rooms, city, district)
+    
+    # Podejście 2: Tradycyjna analiza statystyczna (średnia cena za m2 w danej lokalizacji)
     stat_price = get_statistical_estimate(df, area, city, district)
+    
     return ml_price, stat_price
 
 # =========================================================
-# 3. KOMPONENTY UI
+# 3. KOMPONENTY INTERFEJSU UŻYTKOWNIKA (UI)
 # =========================================================
 
 def render_metrics(stat_price, ml_price):
-    """Wyświetla porównanie wycen w kolumnach."""
+    """
+    Wyświetla kluczowe wskaźniki (wyceny) w trzech kolumnach z porównaniem.
+    """
     col1, col2, col3 = st.columns(3)
     
+    # Obliczanie różnicy między metodami
     diff = ml_price - stat_price
     diff_percent = (diff / stat_price) * 100
 
@@ -75,6 +106,7 @@ def render_metrics(stat_price, ml_price):
         st.caption(T.get("duel_stat_cap", "Oparta na średniej cenie m²"))
 
     with col2:
+        # Metryka ML zawiera deltę (różnicę) względem wyceny statystycznej
         st.metric(
             T.get("duel_ml_val", "Wycena Machine Learning"), 
             f"{ml_price:,.0f} PLN".replace(",", " "), 
@@ -84,6 +116,7 @@ def render_metrics(stat_price, ml_price):
         st.caption(T.get("duel_ml_cap", "Oparta na modelu Random Forest"))
 
     with col3:
+        # Wizualna informacja o kierunku różnicy metod
         sentiment = T.get("duel_higher", "📈 Wyższa") if diff > 0 else T.get("duel_lower", "📉 Niższa")
         st.metric(
             T.get("duel_diff_label", "Różnica metod"), 
@@ -92,9 +125,12 @@ def render_metrics(stat_price, ml_price):
         )
 
 def render_comparison_chart(stat_price, ml_price):
-    """Wyświetla wykres słupkowy porównujący obie metody."""
+    """
+    Tworzy i renderuje wykres słupkowy zestawiony obok siebie za pomocą Plotly.
+    """
     st.divider()
     
+    # Przygotowanie danych w formacie "tidy data" dla Plotly Express
     comparison_df = pd.DataFrame({
         T.get("duel_method_col", "Metoda"): [T.get("duel_stat_val", "Statystyka"), T.get("duel_ml_val", "ML")],
         T.get("duel_price_col", "Cena [PLN]"): [stat_price, ml_price]
@@ -115,36 +151,42 @@ def render_comparison_chart(stat_price, ml_price):
 # =========================================================
 
 def main():
+    """
+    Punkt wejścia aplikacji - koordynuje autoryzację, pobieranie danych i renderowanie.
+    """
+    # Brama bezpieczeństwa: sprawdzenie czy sesja użytkownika jest aktywna
     check_auth()
     
     st.title(T.get("duel_title", "⚖️ Statystyka vs Machine Learning"))
     st.markdown(T.get("duel_desc", "Sprawdź, jak różnią się wyniki tradycyjnej analizy średnich od modelu predykcyjnego."))
 
-    # Inicjalizacja danych
+    # --- POBIERANIE DANYCH ---
     db = get_db()
     username = st.session_state.get('username')
     df_raw = db.get_all_offers(username)
     df = clean_df(df_raw)
 
+    # Walidacja dostępności danych dla aktualnego użytkownika
     if df is None or df.empty:
         st.warning(T.get("no_data", "Brak danych."))
         return
 
-    # Formularz wejściowy
+    # Pobranie parametrów z UI
     city, district, area, rooms = get_sidebar_inputs(df)
 
-    # Obliczenia
+    # Obliczenia obu modeli
     ml_price, stat_price = calculate_valuations(df, area, rooms, city, district)
 
-    # Prezentacja wyników
+    # --- PREZENTACJA WYNIKÓW ---
     if stat_price and ml_price:
         render_metrics(stat_price, ml_price)
         render_comparison_chart(stat_price, ml_price)
 
-        # Wyjaśnienie różnic
+        # Sekcja edukacyjna wyjaśniająca naturę różnic między algorytmem a średnią
         with st.expander(T.get("duel_expander_title", "🧐 Dlaczego wyniki się różnią?")):
             st.markdown(T.get("duel_explanation", "Brak tłumaczenia wyjaśnienia."))
     else:
+        # Obsługa błędów w przypadku braku wytrenowanego modelu ML
         st.info(T.get("duel_no_model", "Wytrenuj model ML, aby zobaczyć porównanie."))
 
 if __name__ == "__main__":

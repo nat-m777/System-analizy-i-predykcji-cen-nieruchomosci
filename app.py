@@ -3,20 +3,21 @@ import os
 import time
 import streamlit as st
 
-# --- 1. SYSTEM PATH FIX ---
+# --- 1. KONFIGURACJA ŚCIEŻEK SYSTEMOWYCH ---
+# Ustawienie BASE_DIR pozwala na bezproblemowe importy modułów z podkatalogów (np. src/)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-# --- 2. IMPORTY ---
+# --- 2. IMPORTY MODUŁÓW WEWNĘTRZNYCH ---
 from src.lang import get_text
 from src.auth import (
     check_auth, init_auth_db, login_session, 
     login_user, logout_session, register_user
 )
 
-# --- 3. KONFIGURACJA STRONY (Musi być pierwsza!) ---
-# Pobieramy tłumaczenia wstępnie dla tytułu karty przeglądarki
+# --- 3. GLOBALNA KONFIGURACJA APLIKACJI ---
+# st.set_page_config musi być wywołane przed jakimkolwiek innym elementem Streamlit
 T_initial = get_text()
 st.set_page_config(
     page_title=T_initial.get("page_title", "System Analizy Nieruchomości"),
@@ -25,9 +26,15 @@ st.set_page_config(
 )
 
 def render_login_screen(T):
-    """Wyświetla formularze logowania i rejestracji."""
+    """
+    Funkcja pomocnicza wyświetlająca interfejs logowania i rejestracji.
+    
+    Args:
+        T (dict): Słownik przetłumaczonych fraz (i18n).
+    """
     st.title(T.get("login_title", "🔐 System Analizy Nieruchomości"))
     
+    # Podział ekranu na zakładki dla lepszej czytelności UI
     tab_login, tab_reg = st.tabs([
         T.get("login_btn", "Logowanie"), 
         T.get("reg_btn", "Rejestracja")
@@ -38,10 +45,11 @@ def render_login_screen(T):
         p = st.text_input(T.get("login_pass", "Hasło"), type="password", key="login_p")
         
         if st.button(T.get("login_btn", "Zaloguj"), use_container_width=True, key="btn_login"):
+            # Proces autoryzacji użytkownika
             if login_user(u, p):
                 login_session(u)
                 st.success("Zalogowano pomyślnie!")
-                time.sleep(0.5)
+                time.sleep(0.5) # Krótka pauza, by użytkownik zauważył komunikat sukcesu
                 st.rerun()
             else:
                 st.error("❌ Błędne dane logowania")
@@ -51,24 +59,22 @@ def render_login_screen(T):
         np = st.text_input(T.get("reg_pass", "Nowe hasło"), type="password", key="reg_p")
         
         if st.button(T.get("reg_btn", "Zarejestruj się"), use_container_width=True, key="btn_reg"):
+            # Rejestracja nowego profilu w bazie danych
             if register_user(nu, np):
                 st.success("✅ Konto utworzone! Możesz się teraz zalogować.")
             else:
                 st.error("❌ Użytkownik o tej nazwie już istnieje.")
 
 def main():
-    # Inicjalizacja bazy
+    """
+    Główna funkcja sterująca przepływem aplikacji (Main Entry Point).
+    Zarządza autoryzacją, językiem oraz nawigacją stron.
+    """
+    # Inicjalizacja komponentów bezpieczeństwa
     init_auth_db()
-    # Sprawdzenie sesji
     check_auth()
-
-    # 1. BRAMA BEZPIECZEŃSTWA
-    if not st.session_state.get("logged_in"):
-        # Czyścimy pozostałości nawigacji, jeśli jakimś cudem zostały
-        render_login_screen(get_text())
-        return # ABSOLUTNIE KOŃCZYMY WYKONYWANIE TUTAJ
     
-    # 1. Wybór języka w sidebarze (widoczny zawsze)
+    # Zarządzanie stanem języka w sesji użytkownika
     if "lang" not in st.session_state:
         st.session_state.lang = "PL"
 
@@ -81,14 +87,22 @@ def main():
             key="lang_selector"
         )
         
+        # Wykrywanie zmiany języka i natychmiastowe odświeżenie UI
         if selected_lang != st.session_state.lang:
             st.session_state.lang = selected_lang
             st.rerun()
 
-    # Pobranie aktualnych tłumaczeń
+    # Pobranie tekstów w aktualnie wybranym języku
     T = get_text()
+
+    # BRAMA BEZPIECZEŃSTWA (Security Guard)
+    # Jeśli flaga zalogowania nie jest ustawiona, renderujemy tylko login i przerywamy main()
+    if not st.session_state.get("logged_in"):
+        render_login_screen(get_text())
+        return 
     
-    # --- KONFIGURACJA NAWIGACJI (Tylko dla zalogowanych) ---
+    # --- DEFINICJA STRON I NAWIGACJI ---
+    # Struktura menu bocznego z podziałem na grupy tematyczne
     pages = {
         T.get("nav_group_general", "📊 Ogólne"): [
             st.Page("pages/dashboard.py", title=T.get("nav_dash", "Dashboard"), icon="🏠", default=True),
@@ -105,21 +119,20 @@ def main():
         ]
     }
 
-    # Inicjalizacja nawigacji
+    # Inicjalizacja systemowej nawigacji Streamlit
     pg = st.navigation(pages)
 
-    # Sidebar dla zalogowanego użytkownika (pod menu stron)
+    # Elementy Sidebaru widoczne po zalogowaniu (Profil + Logout)
     with st.sidebar:
         st.divider()
         st.success(f"👤 {st.session_state.get('username')}")
         if st.button(T.get("logout_btn", "Wyloguj"), use_container_width=True):
             logout_session()
-            st.success("Wylogowywanie...") # Wizualne potwierdzenie dla użytkownika
-            time.sleep(0.5) # Dajemy 500ms dla managera ciasteczek na usunięcie pliku
+            st.success("Wylogowywanie...")
+            time.sleep(0.5) 
             st.rerun()
 
-    # URUCHOMIENIE WYBRANEJ STRONY
-    # To polecenie renderuje zawartość wybranego pliku z folderu pages/
+    # Renderowanie zawartości aktywnej strony
     pg.run()
 
 if __name__ == "__main__":
