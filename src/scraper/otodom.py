@@ -42,40 +42,49 @@ class OtodomScraper:
         text = re.sub(r'[^a-z0-9\-]', '', text)
         return text
 
+    
     def start_driver(self):
-        """
+         """
         Metoda start_driver, która poprawnie 
         obsługuje środowisko Streamlit Cloud i Docker.
         """
         if self.driver: return
         
         options = Options()
-        options.add_argument("--headless=new")
+        options.add_argument("--headless=new") 
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
 
-        # Wymuszenie ścieżek z packages.txt
+        # Ścieżki z packages.txt
         chrome_bin = "/usr/bin/chromium"
         chromedriver_bin = "/usr/bin/chromedriver"
         
-        # Sprawdzamy czy pliki istnieją (Streamlit Cloud/Docker)
+        # 1. Sprawdzamy czy Chromium istnieje
         if os.path.exists(chrome_bin):
             options.binary_location = chrome_bin
+            print(f"✅ Znaleziono Chromium: {chrome_bin}")
         
         try:
+            # 2. KLUCZOWY MOMENT: 
+            # Jeśli jesteśmy w chmurze, MUSIMY użyć Service z konkretną ścieżką.
             if os.path.exists(chromedriver_bin):
-                service = Service(chromedriver_bin)
+                print(f"✅ Używam systemowego Chromedrivera: {chromedriver_bin}")
+                service = Service(executable_path=chromedriver_bin)
+                # To wywołanie blokuje szukanie w .cache
                 self.driver = webdriver.Chrome(service=service, options=options)
             else:
-                # Fallback dla Windows/Lokalnie
+                # Logika dla Twojego komputera (Windows/Mac)
+                print("ℹ️ Nie znaleziono /usr/bin/chromedriver. Próba domyślna (lokalna).")
                 self.driver = webdriver.Chrome(options=options)
+                
         except Exception as e:
-            st.error(f"Błąd inicjalizacji przeglądarki: {e}")
-            # Ostatnia deska ratunku
+            st.error(f"Krytyczny błąd Selenium: {e}")
+            # Próba ratunkowa bez żadnych parametrów ścieżek
             self.driver = webdriver.Chrome(options=options)
+
     def close_driver(self):
         """Zwalnia zasoby systemowe poprzez poprawne zamknięcie sesji przeglądarki."""
         if self.driver:
