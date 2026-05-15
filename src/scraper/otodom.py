@@ -44,7 +44,7 @@ class OtodomScraper:
 
     
     def start_driver(self):
-         """
+        """
         Metoda start_driver, która poprawnie 
         obsługuje środowisko Streamlit Cloud i Docker.
         """
