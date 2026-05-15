@@ -192,12 +192,3 @@ class OtodomScraper:
 
         return pd.DataFrame(self.all_results)
     
-    @staticmethod
-    def get_driver():
-        """Metoda statyczna do szybkiej inicjalizacji drivera (uproszczona)."""
-        options = Options()
-        options.add_argument("--headless")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-gpu")
-        return webdriver.Chrome(options=options)
