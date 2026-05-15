@@ -10,10 +10,21 @@ class DBManager:
     oraz systemem statystyk i osiągnięć użytkowników.
     """
     def __init__(self):
-        # Pobieranie URL bazy danych ze zmiennych środowiskowych (bezpieczeństwo)
-        self.url = os.getenv("DATABASE_URL", "postgresql+psycopg2://admin:password@127.0.0.1:5432/real_estate")
-        # Inicjalizacja silnika SQLAlchemy
-        self.engine = create_engine(self.url)
+        # Bezpieczne sprawdzenie sekretów bez wywoływania błędu
+        self.db_url = None
+        
+        try:
+            # Próba pobrania ze Streamlit Secrets
+            if "DATABASE_URL" in st.secrets:
+                self.db_url = st.secrets["DATABASE_URL"]
+        except Exception:
+            # Jeśli st.secrets wyrzuci błąd (np. brak pliku), szukamy w systemie
+            self.db_url = os.getenv("DATABASE_URL")
+
+        # Jeśli nadal nie ma URL (np. uruchamiasz lokalnie bez Dockera)
+        if not self.db_url:
+            self.db_url = "postgresql+psycopg2://[LOGIN]:[HASŁO]@127.0.0.1:5432/real_estate"
+        self.engine = create_engine(self.db_url)
         # Automatyczne przygotowanie struktury bazy przy starcie aplikacji
         self.create_tables()
         self.fix_schema()
