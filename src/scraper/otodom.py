@@ -44,31 +44,38 @@ class OtodomScraper:
 
     def start_driver(self):
         """
-        Konfiguruje i uruchamia przeglądarkę Chrome w trybie 'headless'.
-        Zawiera optymalizacje pod kątem omijania prostych systemów anty-botowych (AutomationControlled).
+        Metoda start_driver, która poprawnie 
+        obsługuje środowisko Streamlit Cloud i Docker.
         """
         if self.driver: return
+        
         options = Options()
-        options.add_argument("--headless=new") # Tryb bez okna (wymagany na serwerach)
+        options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
         options.add_argument("--disable-blink-features=AutomationControlled")
-        # Maskowanie user-agent, by symulować realną przeglądarkę
         options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
 
-        # Ścieżki do plików binarnych (obsługa środowisk Docker/Linux)
-        chrome_bin = os.getenv("CHROME_BIN", "/usr/bin/chromium")
-        driver_path = os.getenv("CHROMEDRIVER_PATH", "/usr/bin/chromedriver")
+        # Wymuszenie ścieżek z packages.txt
+        chrome_bin = "/usr/bin/chromium"
+        chromedriver_bin = "/usr/bin/chromedriver"
+        
+        # Sprawdzamy czy pliki istnieją (Streamlit Cloud/Docker)
+        if os.path.exists(chrome_bin):
+            options.binary_location = chrome_bin
         
         try:
-            if os.path.exists(chrome_bin):
-                options.binary_location = chrome_bin
-            service = Service(driver_path)
-            self.driver = webdriver.Chrome(service=service, options=options)
+            if os.path.exists(chromedriver_bin):
+                service = Service(chromedriver_bin)
+                self.driver = webdriver.Chrome(service=service, options=options)
+            else:
+                # Fallback dla Windows/Lokalnie
+                self.driver = webdriver.Chrome(options=options)
         except Exception as e:
-            # Fallback: próba uruchomienia z domyślnych ścieżek systemowych (np. Windows)
+            st.error(f"Błąd inicjalizacji przeglądarki: {e}")
+            # Ostatnia deska ratunku
             self.driver = webdriver.Chrome(options=options)
-
     def close_driver(self):
         """Zwalnia zasoby systemowe poprzez poprawne zamknięcie sesji przeglądarki."""
         if self.driver:
