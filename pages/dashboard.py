@@ -121,7 +121,11 @@ def render_dashboard_ui(df, sel_cities, sel_districts, avg_val, history_df):
         if len(df_charts) > 1:
             # Wywołanie zewnętrznych funkcji generujących wykresy Plotly
             st.plotly_chart(create_price_histogram(df_charts), use_container_width=True)
-            st.plotly_chart(create_area_vs_price_chart(df_charts), use_container_width=True)
+            fig_area_price = create_area_vs_price_chart(df_charts)
+            if fig_area_price is not None:
+                st.plotly_chart(fig_area_price, use_container_width=True)
+            else:
+                st.warning("⚠️ Brak wystarczających danych do wygenerowania wykresu ceny od powierzchni.")
         else:
             st.warning(T.get("no_data_charts", "Zbyt mało danych do generowania wykresów."))
 
