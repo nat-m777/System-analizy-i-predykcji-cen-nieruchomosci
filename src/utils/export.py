@@ -62,11 +62,21 @@ def generate_valuation_pdf(params, price_est, translation_map):
         pdf.cell(0, 20, safe_text(val_str), border=1, ln=True, align='C', fill=True)
         
         # 5. Przygotowanie wyjścia dla Streamlit
-        output = pdf.output()
-        if isinstance(output, bytearray):
-            return bytes(output)
-        elif isinstance(output, str):
+        # 5. Przygotowanie wyjścia dla Streamlit (POPRAWIONE)
+        # Przekazujemy dest='S' aby wymusić zwrot danych binarnych z dokumentu
+        output = pdf.output(dest='S')
+        
+        if not output:
+            print("PDF Error: fpdf output jest pusty")
+            return None
+            
+        # Zabezpieczenie typu danych: Streamlit oczekuje czystych bajtów (bytes)
+        if isinstance(output, str):
+            # Jeśli biblioteka zwróciła string latin-1, kodujemy go na bajty
             return output.encode('latin-1')
+        elif isinstance(output, (bytes, bytearray)):
+            return bytes(output)
+            
         return output
         
     except Exception as e:

@@ -170,9 +170,26 @@ def render_dashboard_ui(df, sel_cities, sel_districts, avg_val, history_df):
             T.get("dash_avg_total", "Śr. cena"): f"{int(avg_total_price):,} zł".replace(",", " ")
         }
         # Generowanie PDF w pamięci i udostępnienie do pobrania
-        pdf_bytes = generate_valuation_pdf(params=pdf_params, price_est=avg_val, translation_map=T)
-        st.download_button(label=T.get("dash_download_pdf", "Pobierz Raport PDF"), data=pdf_bytes,
-                         file_name="market_report.pdf", mime="application/pdf", use_container_width=True)
+        # 1. Wywołujemy generator PDF i przechwytujemy wynik
+        pdf_bytes = None
+        try:
+            # Upewnij się, że przekazujesz odpowiednie parametry do swojej funkcji
+            pdf_bytes = generate_valuation_pdf(params, avg_val, T)
+        except Exception as pdf_gen_err:
+            st.error(f"Błąd krytyczny podczas generowania pliku: {pdf_gen_err}")
+
+        # 2. PANCERNE ZABEZPIECZENIE: Przycisk renderuje się TYLKO, gdy bajty istnieją
+        if pdf_bytes is not None:
+            st.download_button(
+                label=T.get("dash_download_pdf", "Pobierz Raport PDF"), 
+                data=pdf_bytes,
+                file_name="market_report.pdf", 
+                mime="application/pdf", 
+                use_container_width=True
+            )
+        else:
+            # Zamiast błędu Streamlita, użytkownik zobaczy czytelny komunikat systemowy
+            st.error("❌ Przycisk pobierania jest niedostępny. Generator nie mógł utworzyć pliku PDF.")
 
 def main():
     """
