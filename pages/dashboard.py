@@ -174,7 +174,7 @@ def render_dashboard_ui(df, sel_cities, sel_districts, avg_val, history_df):
         pdf_bytes = None
         try:
             # Upewnij się, że przekazujesz odpowiednie parametry do swojej funkcji
-            pdf_bytes = generate_valuation_pdf(params, avg_val, T)
+            pdf_bytes = generate_valuation_pdf(pdf_params, avg_val, T)
         except Exception as pdf_gen_err:
             st.error(f"Błąd krytyczny podczas generowania pliku: {pdf_gen_err}")
 
