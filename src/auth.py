@@ -11,12 +11,20 @@ from sqlalchemy import create_engine, text
 # KONFIGURACJA BAZY DANYCH (DATABASE)
 # =========================================================
 
-# Pobranie adresu bazy danych ze zmiennych środowiskowych (Secrets w Streamlit Cloud)
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = None
+try:
+    if "DATABASE_URL" in st.secrets:
+        DATABASE_URL = st.secrets["DATABASE_URL"]
+except:
+    pass
 
+# 2. Jeśli go tam nie ma, poszukaj w zwykłych zmiennych środowiskowych (.env / Docker)
 if not DATABASE_URL:
-    # Krytyczne zabezpieczenie: zatrzymanie aplikacji, jeśli URL bazy nie jest skonfigurowany
-    raise ValueError("BŁĄD: DATABASE_URL nie została znaleziona w Secrets!")
+    DATABASE_URL = os.getenv("DATABASE_URL")
+
+# 3. Jeśli nadal pusto – wyrzuć błąd
+if not DATABASE_URL:
+    DATABASE_URL = "postgresql+psycopg2://admin:password@localhost:5432/real_estate"
 
 # Inicjalizacja silnika SQLAlchemy - mostu między Pythonem a PostgreSQL
 engine = create_engine(DATABASE_URL)

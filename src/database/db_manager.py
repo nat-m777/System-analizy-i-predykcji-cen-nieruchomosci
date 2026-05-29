@@ -96,8 +96,22 @@ class DBManager:
     def fix_schema(self):
         """Metoda migracyjna - dodaje brakujące kolumny w przypadku aktualizacji bazy."""
         with self.engine.begin() as conn:
+            # Dodanie kolumny url, która spowodowała błąd:
+            conn.execute(text("ALTER TABLE offers ADD COLUMN IF NOT EXISTS url TEXT;"))
+            
+            # Zabezpieczenie na wypadek innych brakujących kolumn:
+            conn.execute(text("ALTER TABLE offers ADD COLUMN IF NOT EXISTS subdistrict TEXT;"))
+            conn.execute(text("ALTER TABLE offers ADD COLUMN IF NOT EXISTS price_per_m2 DOUBLE PRECISION;"))
+            conn.execute(text("ALTER TABLE offers ADD COLUMN IF NOT EXISTS source TEXT;"))
             conn.execute(text("ALTER TABLE offers ADD COLUMN IF NOT EXISTS username TEXT;"))
             conn.execute(text("ALTER TABLE offers ADD COLUMN IF NOT EXISTS owner TEXT;"))
+
+            # 2. AUTOMATYCZNA NAPRAWA: Uzupełnianie pustych cen za m2 dla starych danych
+            conn.execute(text("""
+                UPDATE offers 
+                SET price_per_m2 = price / area 
+                WHERE price_per_m2 IS NULL AND area > 0;
+            """))
 
     def insert_offers(self, df, username):
         """
@@ -121,6 +135,17 @@ class DBManager:
         for col in numeric_cols:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        if "price_per_m2" not in df.columns or df["price_per_m2"].isnull().all():
+            # Upewniamy się, że cena i metraż są liczbami
+            df["price"] = pd.to_numeric(df["price"], errors="coerce")
+            df["area"] = pd.to_numeric(df["area"], errors="coerce")
+            
+            # Bezpieczne dzielenie (jeśli area > 0)
+            df["price_per_m2"] = df.apply(
+                lambda row: row["price"] / row["area"] if pd.notna(row["price"]) and pd.notna(row["area"]) and row["area"] > 0 else None,
+                axis=1
+            )
 
         if "scrape_date" in df.columns:
             df["scrape_date"] = pd.to_datetime(df["scrape_date"], errors="coerce")

@@ -45,6 +45,7 @@ def clean_df(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
+
 def get_city_stats(df: pd.DataFrame, city_name: str):
     """
     Pomocnicza funkcja do szybkiego wyciągania statystyk dla konkretnego miasta.

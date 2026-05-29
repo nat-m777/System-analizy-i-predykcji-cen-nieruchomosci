@@ -106,6 +106,7 @@ def main():
     pages = {
         T.get("nav_group_general", "📊 Ogólne"): [
             st.Page("pages/dashboard.py", title=T.get("nav_dash", "Dashboard"), icon="🏠", default=True),
+            st.Page("pages/dzielnice.py", title=T.get("nav_top6", "Dzielnice TOP 6"), icon="🏙️"),
             st.Page("pages/comparision.py", title=T.get("nav_comp", "Porównywarka"), icon="⚖️"),
             st.Page("pages/ranking.py", title=T.get("nav_rank", "Ranking"), icon="🏆"),
         ],

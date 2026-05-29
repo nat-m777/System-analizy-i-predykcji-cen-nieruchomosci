@@ -93,49 +93,51 @@ def main():
         val = st.session_state.last_valuation
         st.divider()
         
-        # Sekcja wizualizacji: Wykresy kontekstowe (rozkład cen w okolicy)
-        with st.expander(T["chart_expander"], expanded=True):
-            show_price_prediction_logic(df, val['area'], val['city'], val['district'])
+        # [ZMIANA] Przeprowadzamy walidację: czy cena jest większa od zera?
+        has_valid_data = val['price'] > 0
 
-        # Prezentacja wyniku głównego w sformatowanej formie (np. 500 000 zł)
-        formatted_price = f"{int(val['price']):,}".replace(',', ' ')
-        st.success(T["result_msg"].format(city=val['city'], dist=val['district'], price=formatted_price))
-        
-        # --- PANEL EKSPORTU ---
-        st.write(f"### 💾 {T.get('export_header', 'Eksport danych')}")
-        col_exp1, col_exp2 = st.columns(2)
-        
-        with col_exp1:
-            # Generowanie surowych danych CSV dla arkuszy kalkulacyjnych
-            csv_bytes = prepare_csv(val)
-            st.download_button(
-                label=T["download_csv"],
-                data=csv_bytes,
-                file_name=f"wycena_{val['city']}.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
+        # Sekcja wizualizacji (wykresy) - pokazujemy tylko, gdy mamy poprawne dane
+        if has_valid_data:
+            with st.expander(T["chart_expander"], expanded=True):
+                show_price_prediction_logic(df, val['area'], val['city'], val['district'])
             
-        with col_exp2:
-            # Generowanie profesjonalnego raportu PDF (certyfikatu wyceny)
-            # Mapowanie parametrów na etykiety językowe przed wysłaniem do generatora
-            pdf_params = {
-                T["city_label"]: val['city'],
-                T["dist_label"]: val['district'],
-                T["area_label"]: f"{val['area']} m²",
-                T["rooms_label"]: val['rooms']
-            }
+            # Prezentacja poprawnego wyniku głównego
+            formatted_price = f"{int(val['price']):,}".replace(',', ' ')
+            st.success(T["result_msg"].format(city=val['city'], dist=val['district'], price=formatted_price))
             
-            pdf_bytes = generate_valuation_pdf(pdf_params, val['price'], T)
+            # --- PANEL EKSPORTU --- (dostępny tylko dla udanych wycen)
+            st.write(f"### 💾 {T.get('export_header', 'Eksport danych')}")
+            col_exp1, col_exp2 = st.columns(2)
             
-            if pdf_bytes:
+            with col_exp1:
+                csv_bytes = prepare_csv(val)
                 st.download_button(
-                    label=T["download_pdf"],
-                    data=pdf_bytes,
-                    file_name=f"certyfikat_{val['city']}.pdf",
-                    mime="application/pdf",
+                    label=T["download_csv"],
+                    data=csv_bytes,
+                    file_name=f"wycena_{val['city']}.csv",
+                    mime="text/csv",
                     use_container_width=True
                 )
+                
+            with col_exp2:
+                pdf_params = {
+                    T["city_label"]: val['city'],
+                    T["dist_label"]: val['district'],
+                    T["area_label"]: f"{val['area']} m²",
+                    T["rooms_label"]: val['rooms']
+                }
+                pdf_bytes = generate_valuation_pdf(pdf_params, val['price'], T)
+                if pdf_bytes:
+                    st.download_button(
+                        label=T["download_pdf"],
+                        data=pdf_bytes,
+                        file_name=f"certyfikat_{val['city']}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
+        else:
+            # [ZMIANA] Obsługa błędu - czytelny komunikat dla użytkownika zamiast 0 zł
+            st.warning(f"⚠️ Nie można oszacować ceny. W bazie danych brakuje ofert dla lokalizacji: {val['city']} ({val['district']}).")
 
     # --- DODATKOWE STATYSTYKI LOKALIZACJI ---
     # Sekcja dla analityków - pokazuje surowe średnie i mediany dla wybranego regionu
