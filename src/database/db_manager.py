@@ -23,7 +23,10 @@ class DBManager:
 
         # Jeśli nadal nie ma URL (np. uruchamiasz lokalnie bez Dockera)
         if not self.db_url:
-            self.db_url = "postgresql+psycopg2://[LOGIN]:[HASŁO]@127.0.0.1:5432/real_estate"
+            #lokalnie
+            #self.db_url = "postgresql+psycopg2://admin:password@127.0.0.1:5432/real_estate"
+            #docker
+            self.db_url = "postgresql+psycopg2://admin:password@db:5432/real_estate"
         self.engine = create_engine(self.db_url)
         # Automatyczne przygotowanie struktury bazy przy starcie aplikacji
         self.create_tables()
@@ -208,11 +211,13 @@ class DBManager:
 
     def update_stat(self, username, column_name, value=1, increment=True):
         """
-        Aktualizuje statystyki aktywności użytkownika. Obsługuje inkrementację (np. liczniki)
-        oraz ustawianie sztywnych wartości (np. liczba unikalnych miast).
+        Aktualizuje statystyki aktywności użytkownika, jeśli ten istnieje w bazie.
+        Zapobiega błędom dla niezalogowanych / nieistniejących użytkowników.
         """
+        # Zapytanie sprawdzające obecność użytkownika
+        check_user_query = text("SELECT 1 FROM users WHERE username = :u")
+
         if increment:
-            # UPSERT: Dodaje wartość do istniejącego licznika
             query = text(f"""
                 INSERT INTO user_stats (username, {column_name}) 
                 VALUES (:u, :v) 
@@ -220,7 +225,6 @@ class DBManager:
                 DO UPDATE SET {column_name} = user_stats.{column_name} + :v, last_updated = CURRENT_TIMESTAMP
             """)
         else:
-            # UPSERT: Nadpisuje istniejącą wartość
             query = text(f"""
                 INSERT INTO user_stats (username, {column_name}) 
                 VALUES (:u, :v) 
@@ -229,6 +233,15 @@ class DBManager:
             """)
             
         with self.engine.begin() as conn:
+            # 1. Sprawdź, czy użytkownik w ogóle istnieje w tabeli 'users'
+            user_exists = conn.execute(check_user_query, {"u": username}).fetchone()
+            
+            # 2. Jeśli nie istnieje (user_exists jest None), przerywamy i nie rzucamy błędem
+            if not user_exists:
+                print(f"Użytkownik {username} nie istnieje. Pomijam aktualizację statystyk.")
+                return  # Wychodzimy z funkcji, aplikacja działa dalej!
+                
+            # 3. Jeśli istnieje, bezpiecznie wykonujemy UPSERT statystyk
             conn.execute(query, {"u": username, "v": value})
 
     def check_and_update_achievements(self, username):

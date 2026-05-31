@@ -18,13 +18,13 @@ try:
 except:
     pass
 
-# 2. Jeśli go tam nie ma, poszukaj w zwykłych zmiennych środowiskowych (.env / Docker)
+#wez ze zmiennych srodowiskowych
 if not DATABASE_URL:
     DATABASE_URL = os.getenv("DATABASE_URL")
 
-# 3. Jeśli nadal pusto – wyrzuć błąd
+#utworz recznie sciezke
 if not DATABASE_URL:
-    DATABASE_URL = "postgresql+psycopg2://admin:password@localhost:5432/real_estate"
+    DATABASE_URL = "postgresql+psycopg2://admin:password@db:5432/real_estate"
 
 # Inicjalizacja silnika SQLAlchemy - mostu między Pythonem a PostgreSQL
 engine = create_engine(DATABASE_URL)

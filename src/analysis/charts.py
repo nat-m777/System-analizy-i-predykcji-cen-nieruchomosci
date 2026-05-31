@@ -42,19 +42,29 @@ def create_area_vs_price_chart(df):
     )
     return fig
 
-def show_price_prediction_logic(df, area, city, district):
+def show_price_prediction_logic(df, area, city, district, rooms):
     T = get_text()
-    """Oblicza estymację i zwraca komponenty wizualne."""
+    """Oblicza estymację i zwraca komponenty wizualne z uwzględnieniem liczby pokoi."""
     
-    # 1. Filtrowanie danych i obsługa braków
-    local_data = df[(df['city'] == city) & (df['district'] == district)].copy()
-    local_data = local_data.dropna(subset=['price_per_m2']) # Ważne dla mediany
+    # 1. Filtrowanie danych z uwzględnieniem pokoi (Najwyższy priorytet)
+    local_data = df[
+        (df['city'] == city) & 
+        (df['district'] == district) & 
+        (df['rooms'] == rooms)
+    ].copy()
+    local_data = local_data.dropna(subset=['price_per_m2'])
     
-    scope = f"{T.get('dist_label', 'dzielnicy')} {district}"
+    scope = f"{T.get('dist_label', 'dzielnicy')} {district} ({rooms} {T.get('rooms_label', 'pok.')})"
 
+    # Fallback Poziom 1: Jeśli brak ofert dla tych pokoi w dzielnicy -> cała dzielnica (bez względu na pokoje)
+    if len(local_data) < 3:
+        local_data = df[(df['city'] == city) & (df['district'] == district)].copy().dropna(subset=['price_per_m2'])
+        scope = f"{T.get('dist_label', 'dzielnicy')} {district} (ogółem)"
+
+    # Fallback Poziom 2: Jeśli w dzielnicy w ogóle brak danych -> całe miasto
     if len(local_data) < 3:
         local_data = df[df['city'] == city].copy().dropna(subset=['price_per_m2'])
-        scope = f"{T.get('city_label', 'miasta')} {city}"
+        scope = f"{T.get('city_label', 'miasta')} {city} (ogółem)"
 
     if local_data.empty:
         st.error(T.get("no_data", "Brak danych"))
@@ -78,7 +88,7 @@ def show_price_prediction_logic(df, area, city, district):
             value=f"{int(median_price_m2):,} PLN/m²".replace(",", " ")
         )
     
-    st.info(f"💡 {T.get('comp_info', 'Info')}: **{scope}**.")
+    st.info(f"💡 {T.get('comp_info', 'Info')}: Dane bazują na obszarze **{scope}**.")
 
     # 4. Wykres kontekstowy
     fig_comp = px.box(

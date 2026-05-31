@@ -80,7 +80,7 @@ def calculate_valuations(df, area, rooms, city, district):
     ml_price = predictor.predict(area, rooms, city, district)
     
     # Podejście 2: Tradycyjna analiza statystyczna (średnia cena za m2 w danej lokalizacji)
-    stat_price = get_statistical_estimate(df, area, city, district)
+    stat_price = get_statistical_estimate(df, area, city, district,rooms)
     
     return ml_price, stat_price
 

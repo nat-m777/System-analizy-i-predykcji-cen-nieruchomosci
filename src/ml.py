@@ -42,7 +42,7 @@ class PricePredictor:
         X = df_clean[feature_cols]
         y = df_clean[target_col]
 
-        # Reszta kodu Pipeline (bez zmian)...
+        # Reszta kodu Pipeline 
         categorical_features = ['city', 'district']
         categorical_transformer = OneHotEncoder(handle_unknown='ignore')
 
@@ -88,21 +88,31 @@ class PricePredictor:
             print(f"Błąd predykcji ML: {e}")
             return None
 
-def get_statistical_estimate(df, area, city, district):
-    """Oblicza wycenę na podstawie średniej ceny za m2 (Statystyka)."""
-    try:
-        # 1. Próba wyceny na podstawie dzielnicy
-        subset = df[(df['city'] == city) & (df['district'] == district)]
+def get_statistical_estimate(df, area, city, district, rooms):
+    """
+    Oblicza wartość nieruchomości na podstawie średniej ceny za m2,
+    uwzględniając miasto, dzielnicę oraz liczbę pokoi.
+    """
+    # 1. Próba rygorystycznego dopasowania: Miasto + Dzielnica + Dokładna liczba pokoi
+    subset = df[
+        (df['city'] == city) & 
+        (df['district'] == district) & 
+        (df['rooms'] == rooms)
+    ].copy()
+    
+    # Fallback 1: Jeśli w bazie jest za mało ofert (np. mniej niż 3) dla tych pokoi w dzielnicy,
+    # ignorujemy pokoje i bierzemy ogólną średnią dla całej dzielnicy
+    if subset.empty or len(subset) < 3:
+        subset = df[(df['city'] == city) & (df['district'] == district)].copy()
         
-        # 2. Fallback do całego miasta, jeśli w dzielnicy nie ma ofert
-        if subset.empty:
-            subset = df[df['city'] == city]
-            
-        if not subset.empty:
-            avg_m2 = subset['price_per_m2'].mean()
-            return round(avg_m2 * area, 2)
+    # Fallback 2: Jeśli cała dzielnica jest pusta, bierzemy średnią z całego miasta
+    if subset.empty or len(subset) < 3:
+        subset = df[df['city'] == city].copy()
         
-        return None
-    except Exception as e:
-        print(f"Błąd wyceny statystycznej: {e}")
-        return None
+    if subset.empty:
+        return 0.0
+        
+    # 2. Obliczenie średniej ceny za metr i finalna wycena nieruchomości
+    avg_price_m2 = subset['price_per_m2'].mean()
+    
+    return avg_price_m2 * area

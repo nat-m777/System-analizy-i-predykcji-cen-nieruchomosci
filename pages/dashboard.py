@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime
 
-# Importy z Twojej struktury src
+# Importy ze struktury src
 from src.utils.database import get_db
 from src.utils.data import clean_df
 from src.analysis.charts import create_price_histogram, create_area_vs_price_chart
@@ -48,7 +48,7 @@ def mark_outliers(group):
         return group.assign(status=status_norm)
         
     q1, q3 = group['price_per_m2'].quantile([0.25, 0.75])
-    iqr = q3 - q1  # <-- Tutaj była usterka, teraz jest już w 100% poprawnie
+    iqr = q3 - q1
     
     group['status'] = status_norm
     group.loc[group['price_per_m2'] < (q1 - 1.5 * iqr), 'status'] = status_deal
@@ -59,7 +59,11 @@ def render_dashboard_ui(df, sel_cities, sel_districts, avg_val, history_df, all_
     """
     Interfejs użytkownika renderujący wszystkie wykresy, metryki i odseparowaną historię rynkową.
     """
-    st.title(f"Witaj {username}! 👋")
+    # Dynamiczne wykrywanie jednostki miary liczby ofert (szt. / pcs.)
+    unit = "pcs." if "welcome" in T.get("welcome_msg", "").lower() else "szt."
+    currency = "PLN" if "welcome" in T.get("welcome_msg", "").lower() else "zł"
+
+    st.title(f"{T.get('dash_welcome', 'Witaj')} {username}! 👋")
     st.info(T.get("welcome_msg", "Wybierz moduł z menu po lewej stronie, aby rozpocząć pracę."))
     
     st.divider()
@@ -77,24 +81,24 @@ def render_dashboard_ui(df, sel_cities, sel_districts, avg_val, history_df, all_
         med_val = min_val = max_val = 0
     
     # --- METRYKI ---
-    st.markdown("### 📊 Ogólne podsumowanie")
+    st.markdown(f"### 📊 {T.get('dash_summary_header', 'Ogólne podsumowanie')}")
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric(T.get("metric_offers", "Oferty"), f"{len(df)} szt.")
+    m1.metric(T.get("metric_offers", "Oferty"), f"{len(df)} {unit}")
     m2.metric(T.get("dash_avg_total", "Śr. cena całkowita"), 
-             f"{int(avg_total_price):,}".replace(",", " ") + " zł" if pd.notnull(avg_total_price) else "0 zł")
+             f"{int(avg_total_price):,}".replace(",", " ") + f" {currency}" if pd.notnull(avg_total_price) else f"0 {currency}")
     
-    deals_count = len(df[df['status'].str.contains("Okazja|Deal", na=False)]) if 'status' in df.columns else 0
-    m3.metric(T.get("dash_deals", "Okazje rynkowe"), f"{deals_count} szt.")
-    premium_count = len(df[df['status'].str.contains("Premium", na=False)]) if 'status' in df.columns else 0
-    m4.metric(T.get("dash_premium", "Oferty Premium"), f"{premium_count} szt.")
+    deals_count = len(df[df['status'].str.contains("Okazja|Deal|🔥", na=False)]) if 'status' in df.columns else 0
+    m3.metric(T.get("dash_deals", "Okazje rynkowe"), f"{deals_count} {unit}")
+    premium_count = len(df[df['status'].str.contains("Premium|💎", na=False)]) if 'status' in df.columns else 0
+    m4.metric(T.get("dash_premium", "Oferty Premium"), f"{premium_count} {unit}")
 
     st.write("") 
-    st.markdown("### 📐 Analiza szczegółowa ceny za m²")
+    st.markdown(f"### 📐 {T.get('dash_m2_analysis_header', 'Analiza szczegółowa ceny za m²')}")
     s1, s2, s3, s4 = st.columns(4)
-    s1.metric("📉 Średnia cena za m²", f"{round(avg_val if pd.notnull(avg_val) else 0, 0):,} zł/m²".replace(",", " "))
-    s2.metric("⚖️ Mediana za m²", f"{round(med_val, 0):,} zł/m²".replace(",", " "))
-    s3.metric("🟢 Minimalna cena za m²", f"{round(min_val, 0):,} zł/m²".replace(",", " "))
-    s4.metric("🔴 Maksymalna cena za m²", f"{round(max_val, 0):,} zł/m²".replace(",", " "))
+    s1.metric(f"📉 {T.get('dash_avg_m2', 'Średnia cena za m²')}", f"{round(avg_val if pd.notnull(avg_val) else 0, 0):,} {currency}/m²".replace(",", " "))
+    s2.metric(f"⚖️ {T.get('dash_med_m2', 'Mediana za m²')}", f"{round(med_val, 0):,} {currency}/m²".replace(",", " "))
+    s3.metric(f"🟢 {T.get('dash_min_m2', 'Minimalna cena za m²')}", f"{round(min_val, 0):,} {currency}/m²".replace(",", " "))
+    s4.metric(f"🔴 {T.get('dash_max_m2', 'Maksymalna cena za m²')}", f"{round(max_val, 0):,} {currency}/m²".replace(",", " "))
 
     # --- ZAKŁADKI (TABS) ---
     tabs = st.tabs([
@@ -115,7 +119,7 @@ def render_dashboard_ui(df, sel_cities, sel_districts, avg_val, history_df, all_
             st.warning(T.get("no_data_charts", "Zbyt mało danych do generowania wykresów."))
 
     with tabs[1]:
-        st.write(T.get("anomalies_desc", "Oferty odbiegające cenowo od średniej in danej dzielnicy:"))
+        st.write(T.get("anomalies_desc", "Oferty odbiegające cenowo od średniej w danej dzielnicy:"))
         if 'status' in df.columns:
             st.dataframe(
                 df[df['status'] != T.get("dash_status_norm", "✅ W normie")].sort_values("price_per_m2"),
@@ -128,7 +132,6 @@ def render_dashboard_ui(df, sel_cities, sel_districts, avg_val, history_df, all_
         # =========================================================================
         if history_df is not None and not history_df.empty:
             
-            # Filtrujemy dane tak, aby wyświetlić wyłącznie rekordy z tagiem [DASH]
             if "Dzielnice" in history_df.columns:
                 history_df = history_df[history_df["Dzielnice"].astype(str).str.contains(r"\[DASH\]", na=False)]
                 
@@ -136,10 +139,10 @@ def render_dashboard_ui(df, sel_cities, sel_districts, avg_val, history_df, all_
             
             if not recent_searches.empty:
                 col_h1, col_h2, col_h3, col_h4 = st.columns([2, 3, 3, 2])
-                with col_h1: st.markdown("**Data**")
-                with col_h2: st.markdown("**Miasta**")
-                with col_h3: st.markdown("**Dzielnice**")
-                with col_h4: st.markdown("**Akcja**")
+                with col_h1: st.markdown(f"**{T.get('pdf_date', 'Data')}**")
+                with col_h2: st.markdown(f"**{T.get('city_label', 'Miasta')}**")
+                with col_h3: st.markdown(f"**{T.get('dist_label', 'Dzielnice')}**")
+                with col_h4: st.markdown(f"**{T.get('dash_hist_action', 'Akcja')}**")
                 st.markdown("---")
                 
                 for idx, row in recent_searches.iterrows():
@@ -147,22 +150,23 @@ def render_dashboard_ui(df, sel_cities, sel_districts, avg_val, history_df, all_
                     saved_cities_raw = row.get("Miasta", "")
                     saved_districts_raw = row.get("Dzielnice", "")
                     
-                    # Oczyszczamy string wyświetlania z technicznego prefiksu
                     clean_districts_display = str(saved_districts_raw).replace("[DASH] ", "")
+                    if clean_districts_display.strip().lower() == "wszystkie":
+                        clean_districts_display = T.get("dash_all_districts_label", "Wszystkie")
                     
                     c1, c2, c3, c4 = st.columns([2, 3, 3, 2])
                     with c1: st.write(str(saved_date))
                     with c2: st.write(str(saved_cities_raw))
                     with c3: st.caption(clean_districts_display)
                     with c4:
-                        if st.button("Wczytaj 🔄", key=f"load_dash_{idx}", use_container_width=True):
+                        if st.button(T.get("dash_load_btn", "Wczytaj 🔄"), key=f"load_dash_{idx}", use_container_width=True):
                             parsed_cities = [c.strip() for c in str(saved_cities_raw).split(",") if c.strip() in all_cities]
                             
                             if parsed_cities:
                                 st.session_state["dash_sel_cities"] = parsed_cities
                                 pure_districts_string = clean_districts_display
                                 
-                                if pure_districts_string.strip().lower() in ["wszystkie", ""]:
+                                if pure_districts_string.strip().lower() in ["wszystkie", "all", ""]:
                                     if "dash_sel_districts" in st.session_state:
                                         del st.session_state["dash_sel_districts"]
                                 else:
@@ -171,12 +175,12 @@ def render_dashboard_ui(df, sel_cities, sel_districts, avg_val, history_df, all_
                                     parsed_dists = [d.strip() for d in pure_districts_string.split(",") if d.strip() in available_dists]
                                     st.session_state["dash_sel_districts"] = parsed_dists
                                 
-                                st.toast("🔄 Załadowano filtry do panelu bocznego!")
+                                st.toast(T.get("dash_toast_loaded", "🔄 Załadowano filtry do panelu bocznego!"))
                                 st.rerun()
                             else:
-                                st.error("Nie udało się dopasować miast z tego rekordu.")
+                                st.error(T.get("dash_err_match_city", "Nie udało się dopasować miast z tego rekordu."))
             else:
-                st.info("Brak zapisanych wyszukiwań dla głównego Dashboardu.")
+                st.info(T.get("dash_no_saved_searches", "Brak zapisanych wyszukiwań dla głównego Dashboardu."))
         else:
             st.info(T.get("no_history", "Brak historii wyszukiwań."))
 
@@ -192,10 +196,16 @@ def render_dashboard_ui(df, sel_cities, sel_districts, avg_val, history_df, all_
         csv_data = df_csv.to_csv(index=False).encode('utf-8-sig')
         st.download_button(label=T.get("dash_top100_csv", "Pobierz CSV"), data=csv_data, file_name="export.csv", mime="text/csv", use_container_width=True)
     with c2:
-        pdf_params = {T.get("city_label", "Miasta"): ", ".join(sel_cities), T.get("metric_offers", "Liczba ofert"): len(df), T.get("dash_avg_total", "Śr. cena"): f"{int(avg_total_price):,} zł"}
+        pdf_params = {
+            T.get("city_label", "Miasta"): ", ".join(sel_cities), 
+            T.get("metric_offers", "Liczba ofert"): f"{len(df)} {unit}", 
+            T.get("dash_avg_total", "Śr. cena"): f"{int(avg_total_price):,} {currency}"
+        }
         pdf_bytes = None
-        try: pdf_bytes = generate_valuation_pdf(pdf_params, avg_val, T)
-        except Exception: pass
+        try: 
+            pdf_bytes = generate_valuation_pdf(pdf_params, avg_val, T)
+        except Exception: 
+            pass
         if pdf_bytes is not None:
             st.download_button(label=T.get("dash_download_pdf", "Pobierz Raport PDF"), data=pdf_bytes, file_name="market_report.pdf", mime="application/pdf", use_container_width=True)
 
@@ -207,7 +217,7 @@ def main():
     df = clean_df(df_raw) 
     
     if df is None or df.empty:
-        st.title(f"Witaj {username}! 👋")
+        st.title(f"{T.get('dash_welcome', 'Witaj')} {username}! 👋")
         st.info(T.get("no_data", "Brak danych w bazie."))
         return
 
@@ -258,7 +268,7 @@ def main():
     # 💾 ZAPIS HISTORII Z TAGIEM [DASH]
     # =========================================================================
     st.sidebar.markdown("---")
-    if st.sidebar.button("💾 Zapisz to wyszukiwanie", use_container_width=True):
+    if st.sidebar.button(f"💾 {T.get('dash_save_search_btn', 'Zapisz to wyszukiwanie')}", use_container_width=True):
         if sel_cities:
             try:
                 miasta_str = ", ".join(sel_cities)
@@ -266,12 +276,12 @@ def main():
                 
                 # Zapisujemy tag [DASH] bezpośrednio w kolumnie szczegółów
                 save_search(username, miasta_str, f"[DASH] {dzielnice_str}")
-                st.toast("✅ Wyszukiwanie zapisane w historii!")
+                st.toast(T.get("dash_toast_saved", "✅ Wyszukiwanie zapisane w historii!"))
                 st.rerun()
             except Exception as e:
-                st.sidebar.error(f"Nie udało się zapisać: {e}")
+                st.sidebar.error(f"{T.get('dash_err_save', 'Nie udało się zapisać')}: {e}")
         else:
-            st.sidebar.warning("Wybierz przynajmniej jedno miasto, aby zapisać.")
+            st.sidebar.warning(T.get("dash_warn_select_city", "Wybierz przynajmniej jedno miasto, aby zapisać."))
         
     # --- POBIERANIE HISTORII ---
     try:
